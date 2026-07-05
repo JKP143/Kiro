@@ -101,6 +101,23 @@ KPI_total_deposits = sum(c["dep"] for c in calc.values())
 KPI_proj_interest = sum(c["int1yr"] for c in calc.values())
 KPI_proj_balance = sum(c["projbal"] for c in calc.values())
 
+# Key-metric extras + goal tracker
+interest_credited = sum(a for (_, ty, _, _, a, _) in TX_ROWS if ty == "Interest")
+total_withdrawn = -sum(a for (_, ty, _, _, a, _) in TX_ROWS if ty == "Withdrawal")
+GOAL_TARGET = 100000
+maya_goal_balance = calc["Maya - Personal Goal"]["principal"]
+goal_progress = (maya_goal_balance / GOAL_TARGET) if GOAL_TARGET else 0
+
+# 24-month projection: one cumulative series per bank + total monthly interest
+MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+MONTH_LABELS = [f"{MONTH_ABBR[mo]} {y}" for y in (2026, 2027) for mo in range(12)]
+bank_series = {b: [sum(c['principal'] * (c['mfactor'] ** m) for c in calc.values() if c['bank'] == b)
+                   for m in range(24)] for b in BANKS}
+total_series24 = [sum(bank_series[b][m] for b in BANKS) for m in range(24)]
+monthly_int24 = [0.0] + [total_series24[m] - total_series24[m - 1] for m in range(1, 24)]
+BANK_COLORS = {"Maya": "4472C4", "UNO": "ED7D31", "Tonik": "70AD47", "Banko": "C00000",
+               "CIMB": "7030A0", "GoTyme": "843C0C", "Maribank": "5B9BD5"}
+
 # ----------------------------------------------------------------------------
 # XML helpers
 # ----------------------------------------------------------------------------
@@ -225,6 +242,13 @@ add("date_col", 14, 0, 0, 0, 'horizontal="center" vertical="center"')
 add("txt_col",  0, 0, 0, 0, 'vertical="center"')
 add("dhead",   0, 3, 5, 1, 'horizontal="left" vertical="center"')  # data-region header
 add("green_curr", CURR, 9, 8, 1, 'vertical="center"')
+# Dashboard v2 styles
+add("subsection", 0, 3, 5, 0, 'horizontal="left" vertical="center"')          # navy bold on light gray band
+add("m_lbl", 0, 3, 7, 1, 'horizontal="left" vertical="center"')               # metric label: navy bold, light blue
+add("m_val", CURR, 3, 0, 1, 'horizontal="right" vertical="center"')           # metric value: currency right, white
+add("m_val_pct", 10, 9, 0, 1, 'horizontal="right" vertical="center"')         # progress %: green bold
+add("m_val_input", CURR, 3, 6, 1, 'horizontal="right" vertical="center"')     # editable goal target: yellow
+add("bank_val", CURR, 0, 0, 1, 'horizontal="right" vertical="center"')        # balance-by-bank value
 
 STYLES_XML = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -299,80 +323,88 @@ def worksheet(rows, merges, hyper, ysplit, colsxml, tab_selected=False,
 # ============================================================================
 def build_dashboard():
     rows, merges, hyper = sheet_open("Dashboard",
-        "Overview of your savings across all digital banks. Figures update automatically from the Deposit, Transactions and Interest tabs.", 2, True)
-    # Row 4 section band
-    rows.append(band_row(4, S["section"], "\U0001F4CA Overview"))
-    merges.append("A4:M4")
-    # KPI cards: labels row5, values row6  (pairs A:B C:D E:F G:H)
-    kpi_defs = [
-        ("Total Savings",         S["kpi_curr"], "SUM(Balance!$F$6:$F$19)", round(KPI_total_savings, 2)),
-        ("Total Deposits",        S["kpi_curr"], "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
-        ("Proj. Interest (1 Yr)", S["kpi_curr"], "SUM(Balance!$G$6:$G$19)", round(KPI_proj_interest, 2)),
-        ("Proj. Balance (1 Yr)",  S["kpi_curr"], "SUM(Balance!$H$6:$H$19)", round(KPI_proj_balance, 2)),
-    ]
-    lbl_cells, val_cells = [], []
-    for i, (lbl, vs, formula, cached) in enumerate(kpi_defs):
-        left = COLS[i * 2]; right = COLS[i * 2 + 1]
-        lbl_cells.append(ct(f"{left}5", S["kpi_lbl"], lbl)); lbl_cells.append(ce(f"{right}5", S["kpi_lbl"]))
-        val_cells.append(cf(f"{left}6", vs, formula, cached)); val_cells.append(ce(f"{right}6", vs))
-        merges.append(f"{left}5:{right}5"); merges.append(f"{left}6:{right}6")
-    # fill I,J,K,L,M for rows 5-6 with light gray so the band is clean
-    for i in range(8, 13):
-        lbl_cells.append(ce(f"{COLS[i]}5", S["kpi_lbl"]))
-        val_cells.append(ce(f"{COLS[i]}6", S["kpi_lbl"]))
-    rows.append(f'<row r="5" ht="18" customHeight="1">' + "".join(lbl_cells) + "</row>")
-    rows.append(f'<row r="6" ht="34" customHeight="1">' + "".join(val_cells) + "</row>")
-    # spacer row 7
-    rows.append('<row r="7" ht="8" customHeight="1"/>')
-    # (charts float over rows 8..49)
+        "A live overview of everything in this workbook. Add deposits on the Deposit tab and this page updates automatically.", 3, True)
 
-    # ---- Chart data region (rows 52+) --------------------------------------
-    rows.append(band_row(52, S["section"], "\U0001F5C2 Chart Data (auto-calculated \u2014 do not edit)"))
-    merges.append("A52:M52")
-    # headers row 54
-    hdr = [ct("A54", S["dhead"], "Bank"), ct("B54", S["dhead"], "Total Savings"),
-           ce("C54", S["dhead"]),
-           ct("D54", S["dhead"], "Month"), ct("E54", S["dhead"], "Total Savings"),
-           ct("F54", S["dhead"], "Interest Earned")]
-    for i in range(6, 13):
-        hdr.append(ce(f"{COLS[i]}54", S["dhead"]))
-    rows.append('<row r="54">' + "".join(hdr) + "</row>")
-    # Bank table rows 55..61 ; Projection rows 55..67
-    maxrow = 67
-    for r in range(55, maxrow + 1):
-        cells = []
-        bi = r - 55  # 0..
-        # bank table (only 7 banks -> rows 55..61)
-        if 0 <= bi < len(BANKS):
-            bank = BANKS[bi]
-            cells.append(ct(f"A{r}", S["txt"], bank))
-            cells.append(cf(f"B{r}", S["curr"],
-                            f"SUMIF(Balance!$B$6:$B$19,A{r},Balance!$F$6:$F$19)",
-                            round(bank_totals[bank], 2)))
+    def two_col(rn, label, valcells, ht=18):
+        cells = [ct(f"A{rn}", S["m_lbl"], label)] + [ce(f"{COLS[i]}{rn}", S["m_lbl"]) for i in (1, 2, 3)] + valcells
+        merges.append(f"A{rn}:D{rn}"); merges.append(f"E{rn}:H{rn}")
+        return f'<row r="{rn}" ht="{ht}" customHeight="1">' + "".join(cells) + "</row>"
+
+    def val_block(rn, style, formula=None, cached=None, number=None):
+        top = (cf(f"E{rn}", style, formula, cached) if formula is not None
+               else cn(f"E{rn}", style, number))
+        return [top] + [ce(f"{COLS[i]}{rn}", style) for i in (5, 6, 7)]
+
+    # ---- Key Metrics --------------------------------------------------------
+    rows.append(band_row(4, S["subsection"], "\U0001F511 Key Metrics")); merges.append("A4:M4")
+    metrics = [
+        ("Total Balance (All Accounts)", "SUM(Balance!$F$6:$F$19)", round(KPI_total_savings, 2)),
+        ("Total Deposited (All-Time)",   "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
+        ("Total Interest Credited",      'SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Interest")', round(interest_credited, 2)),
+        ("Total Withdrawn",              '-SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Withdrawal")', round(total_withdrawn, 2)),
+    ]
+    r = 5
+    for (lbl, formula, cached) in metrics:
+        rows.append(two_col(r, lbl, val_block(r, S["m_val"], formula=formula, cached=cached)))
+        r += 1
+    rows.append('<row r="9" ht="6" customHeight="1"/>')
+
+    # ---- Personal Goal Tracker ---------------------------------------------
+    rows.append(band_row(10, S["subsection"], "\U0001F3AF Personal Goal Tracker")); merges.append("A10:M10")
+    rows.append(two_col(11, "Your Savings Goal Target",
+                        val_block(11, S["m_val_input"], number=GOAL_TARGET)))
+    rows.append(two_col(12, "Maya Personal Goal \u2014 Current Balance",
+                        val_block(12, S["m_val"],
+                                  formula='IFERROR(VLOOKUP("Maya - Personal Goal",Balance!$C$6:$F$19,4,FALSE),0)',
+                                  cached=round(maya_goal_balance, 2))))
+    rows.append(two_col(13, "Progress Toward Goal",
+                        val_block(13, S["m_val_pct"], formula="IFERROR(E12/E11,0)",
+                                  cached=round(goal_progress, 4))))
+    rows.append('<row r="14" ht="6" customHeight="1"/>')
+
+    # ---- Balance by Bank (also the pie source) ------------------------------
+    rows.append(band_row(15, S["subsection"], "\U0001F3E6 Balance by Bank")); merges.append("A15:M15")
+    rows.append('<row r="16" ht="18" customHeight="1">'
+                + ct("A16", S["thead"], "Bank") + ct("B16", S["thead"], "Balance") + "</row>")
+    rr = 17
+    for b in BANKS:
+        rows.append(f'<row r="{rr}">' + ct(f"A{rr}", S["txt"], b)
+                    + cf(f"B{rr}", S["bank_val"],
+                         f"SUMIF(Balance!$B$6:$B$19,A{rr},Balance!$F$6:$F$19)",
+                         round(bank_totals[b], 2)) + "</row>")
+        rr += 1
+    rows.append('<row r="24">' + ct("A24", S["tot_txt"], "Total")
+                + cf("B24", S["tot_curr"], "SUM(B17:B23)", round(sum(bank_totals.values()), 2)) + "</row>")
+
+    # ---- chart section titles (charts float over the empty rows) ------------
+    rows.append(band_row(27, S["subsection"], "\U0001F4C8 Savings Growth by Bank (Cumulative Balance)")); merges.append("A27:M27")
+    rows.append(band_row(51, S["subsection"], "\U0001F4CA Monthly Interest Earned")); merges.append("A51:M51")
+
+    # ---- Chart data matrix: 24 months x 7 banks + total interest -----------
+    rows.append(band_row(77, S["section"], "\U0001F5C2 Chart Data (auto-calculated \u2014 do not edit)")); merges.append("A77:M77")
+    hdr = [ct("A79", S["dhead"], "Month")]
+    for i, b in enumerate(BANKS):
+        hdr.append(ct(f"{COLS[i+1]}79", S["dhead"], b))
+    hdr.append(ct("I79", S["dhead"], "Total Interest"))
+    rows.append('<row r="79">' + "".join(hdr) + "</row>")
+    for m in range(24):
+        r = 80 + m
+        cells = [ct(f"A{r}", S["txt"], MONTH_LABELS[m])]
+        for i, b in enumerate(BANKS):
+            col = COLS[i + 1]
+            cells.append(cf(f"{col}{r}", S["curr"],
+                            f"SUMPRODUCT((Interest!$A$6:$A$19={col}$79)*Interest!$G$6:$G$19*Interest!$M$6:$M$19^{m})",
+                            round(bank_series[b][m], 2)))
+        if m == 0:
+            cells.append(cn(f"I{r}", S["curr"], 0))
         else:
-            cells.append(ce(f"A{r}", S["txt"])); cells.append(ce(f"B{r}", S["curr"]))
-        cells.append(ce(f"C{r}", S["txt"]))
-        # projection rows 55..67 -> month 0..12
-        mi = r - 55
-        if 0 <= mi <= 12:
-            cells.append(cn(f"D{r}", S["intc"], mi))
-            cells.append(cf(f"E{r}", S["curr"],
-                            f"SUMPRODUCT(Interest!$G$6:$G$19,Interest!$M$6:$M$19^D{r})",
-                            round(growth_total[mi], 2)))
-            if mi == 0:
-                cells.append(cn(f"F{r}", S["curr"], 0))
-            else:
-                cells.append(cf(f"F{r}", S["curr"], f"E{r}-E{r-1}",
-                                round(monthly_interest[mi], 2)))
-        else:
-            cells += [ce(f"D{r}", S["intc"]), ce(f"E{r}", S["curr"]), ce(f"F{r}", S["curr"])]
-        for i in range(6, 13):
-            cells.append(ce(f"{COLS[i]}{r}", S["txt_col"]))
+            cells.append(cf(f"I{r}", S["curr"], f"SUM(B{r}:H{r})-SUM(B{r-1}:H{r-1})",
+                            round(monthly_int24[m], 2)))
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
 
-    widths = [16, 14, 4, 10, 16, 16, 12, 12, 12, 12, 12, 12, 12]
+    widths = [22, 14, 12, 12, 14, 12, 12, 12, 14, 12, 12, 12, 12]
     colsxml = cols_xml(widths)
-    return worksheet(rows, merges, hyper, 2, colsxml, tab_selected=True,
+    return worksheet(rows, merges, hyper, 3, colsxml, tab_selected=True,
                      drawing_rid="rId1")
 
 # ============================================================================
@@ -607,6 +639,52 @@ def chart_bar(title, catf, catv, valf, valv, sername):
         '</c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>'
         '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
 
+def chart_line_multi(title, catf, catlabels, series):
+    """series: list of (name_cell_ref, name, val_ref, val_cache_list, colorhex)."""
+    sers = []
+    for i, (namecell, name, valf, valv, color) in enumerate(series):
+        sers.append(
+            f'<c:ser><c:idx val="{i}"/><c:order val="{i}"/>'
+            f'<c:tx><c:strRef><c:f>{namecell}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(name)}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
+            f'<c:spPr><a:ln w="28575"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill></a:ln></c:spPr>'
+            f'<c:marker><c:symbol val="none"/></c:marker>'
+            f'<c:cat><c:strRef><c:f>{catf}</c:f>{str_cache(catlabels)}</c:strRef></c:cat>'
+            f'<c:val><c:numRef><c:f>{valf}</c:f>{num_cache(valv)}</c:numRef></c:val>'
+            f'<c:smooth val="0"/></c:ser>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<c:chartSpace {CNS}><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
+        '<c:plotArea><c:layout/><c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>'
+        + "".join(sers) +
+        '<c:marker val="1"/><c:axId val="111"/><c:axId val="222"/></c:lineChart>'
+        '<c:catAx><c:axId val="111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
+        '<c:axPos val="b"/><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Month</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+        '<c:crossAx val="222"/></c:catAx>'
+        '<c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
+        '<c:axPos val="l"/><c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:p><a:r><a:t>Cumulative Balance (PHP)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+        '<c:numFmt formatCode="#,##0" sourceLinked="0"/><c:crossAx val="111"/></c:valAx>'
+        '</c:plotArea><c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>'
+        '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
+
+def chart_bar_cat(title, catf, catlabels, valf, valv, sername):
+    ser = (f'<c:ser><c:idx val="0"/><c:order val="0"/>'
+           f'<c:tx><c:strRef><c:f>{sername[0]}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(sername[1])}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
+           '<c:spPr><a:solidFill><a:srgbClr val="548235"/></a:solidFill></c:spPr>'
+           f'<c:cat><c:strRef><c:f>{catf}</c:f>{str_cache(catlabels)}</c:strRef></c:cat>'
+           f'<c:val><c:numRef><c:f>{valf}</c:f>{num_cache(valv)}</c:numRef></c:val></c:ser>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<c:chartSpace {CNS}><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
+        '<c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:varyColors val="0"/>'
+        + ser +
+        '<c:axId val="333"/><c:axId val="444"/></c:barChart>'
+        '<c:catAx><c:axId val="333"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
+        '<c:axPos val="b"/><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Month</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+        '<c:crossAx val="444"/></c:catAx>'
+        '<c:valAx><c:axId val="444"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
+        '<c:axPos val="l"/><c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:p><a:r><a:t>Interest (PHP)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+        '<c:numFmt formatCode="#,##0" sourceLinked="0"/><c:crossAx val="333"/></c:valAx>'
+        '</c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>'
+        '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
+
 def anchor(frm, to, rid, name):
     fc, fr = frm; tc, tr = to
     return (f'<xdr:twoCellAnchor editAs="oneCell">'
@@ -622,9 +700,9 @@ def anchor(frm, to, rid, name):
 
 def build_drawing():
     # chart ids: cNvPr id = 2,3,4 -> r:id = rId1,rId2,rId3
-    a1 = anchor((0, 7), (6, 27), 2, "Savings Growth")
-    a2 = anchor((6, 7), (13, 27), 3, "Savings by Bank")
-    a3 = anchor((0, 28), (13, 49), 4, "Monthly Interest")
+    a1 = anchor((0, 27), (12, 50), 2, "Savings Growth")   # line, under its title (row 28-50)
+    a2 = anchor((3, 14), (11, 26), 3, "Savings by Bank")  # pie, beside Balance-by-Bank table
+    a3 = anchor((0, 51), (12, 74), 4, "Monthly Interest") # column, under its title (row 52-74)
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" '
         'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
@@ -639,15 +717,16 @@ tx_ws, tx_tbl = build_transactions()
 bal = build_balance()
 intr = build_interest()
 
-chart1 = chart_line("\U0001F4C8 Savings Growth (12-Month Projection)",
-                    "Dashboard!$D$55:$D$67", MONTHS, "Dashboard!$E$55:$E$67", growth_total,
-                    ("Dashboard!$E$54", "Total Savings"))
+growth_series = [(f"Dashboard!${c}$79", b, f"Dashboard!${c}$80:${c}$103", bank_series[b], BANK_COLORS[b])
+                 for c, b in zip("BCDEFGH", BANKS)]
+chart1 = chart_line_multi("Savings Growth by Bank (Cumulative Balance)",
+                          "Dashboard!$A$80:$A$103", MONTH_LABELS, growth_series)
 chart2 = chart_pie("\U0001F967 Savings by Bank",
-                   "Dashboard!$A$55:$A$61", BANKS, "Dashboard!$B$55:$B$61",
-                   [round(bank_totals[b], 2) for b in BANKS], ("Dashboard!$B$54", "Total Savings"))
-chart3 = chart_bar("\U0001F4CA Monthly Interest Earned",
-                   "Dashboard!$D$56:$D$67", MONTHS[1:], "Dashboard!$F$56:$F$67", monthly_interest[1:],
-                   ("Dashboard!$F$54", "Interest Earned"))
+                   "Dashboard!$A$17:$A$23", BANKS, "Dashboard!$B$17:$B$23",
+                   [round(bank_totals[b], 2) for b in BANKS], ("Dashboard!$B$16", "Balance"))
+chart3 = chart_bar_cat("Monthly Interest Earned",
+                       "Dashboard!$A$80:$A$103", MONTH_LABELS, "Dashboard!$I$80:$I$103", monthly_int24,
+                       ("Dashboard!$I$79", "Interest Earned"))
 drawing = build_drawing()
 
 workbook_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
