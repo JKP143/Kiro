@@ -393,17 +393,18 @@ def build_dashboard():
         cells = [ct(f"A{r}", S["txt"], MONTH_LABELS[m])]
         for i, b in enumerate(BANKS):
             col = COLS[i + 1]
-            cells.append(cf(f"{col}{r}", S["num"],
+            cells.append(cf(f"{col}{r}", S["curr"],
                             f"SUMPRODUCT((Interest!$A$6:$A$19={col}$79)*Interest!$G$6:$G$19*Interest!$M$6:$M$19^{m})",
                             round(bank_series[b][m], 2)))
         if m == 0:
-            cells.append(cn(f"I{r}", S["num"], 0))
+            cells.append(cn(f"I{r}", S["curr"], 0))
         else:
-            cells.append(cf(f"I{r}", S["num"], f"SUM(B{r}:H{r})-SUM(B{r-1}:H{r-1})",
+            cells.append(cf(f"I{r}", S["curr"], f"SUM(B{r}:H{r})-SUM(B{r-1}:H{r-1})",
                             round(monthly_int24[m], 2)))
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
 
-    widths = [20, 16, 13, 13, 15, 13, 13, 13, 15, 12, 12, 12, 12]
+    # wide enough for "PHP ###,###.##" currency in the chart-data matrix
+    widths = [20, 16, 16, 16, 16, 16, 16, 16, 16, 12, 12, 12, 12]
     colsxml = cols_xml(widths)
     return worksheet(rows, merges, hyper, 3, colsxml, tab_selected=True,
                      drawing_rid="rId1")
