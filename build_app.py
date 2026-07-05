@@ -249,6 +249,7 @@ add("m_val", CURR, 3, 0, 1, 'horizontal="right" vertical="center"')           # 
 add("m_val_pct", 10, 9, 0, 1, 'horizontal="right" vertical="center"')         # progress %: green bold
 add("m_val_input", CURR, 3, 6, 1, 'horizontal="right" vertical="center"')     # editable goal target: yellow
 add("bank_val", CURR, 0, 0, 1, 'horizontal="right" vertical="center"')        # balance-by-bank value
+add("num", 3, 0, 0, 1, 'horizontal="right" vertical="center"')                # compact #,##0 (chart-data matrix)
 
 STYLES_XML = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -392,17 +393,17 @@ def build_dashboard():
         cells = [ct(f"A{r}", S["txt"], MONTH_LABELS[m])]
         for i, b in enumerate(BANKS):
             col = COLS[i + 1]
-            cells.append(cf(f"{col}{r}", S["curr"],
+            cells.append(cf(f"{col}{r}", S["num"],
                             f"SUMPRODUCT((Interest!$A$6:$A$19={col}$79)*Interest!$G$6:$G$19*Interest!$M$6:$M$19^{m})",
                             round(bank_series[b][m], 2)))
         if m == 0:
-            cells.append(cn(f"I{r}", S["curr"], 0))
+            cells.append(cn(f"I{r}", S["num"], 0))
         else:
-            cells.append(cf(f"I{r}", S["curr"], f"SUM(B{r}:H{r})-SUM(B{r-1}:H{r-1})",
+            cells.append(cf(f"I{r}", S["num"], f"SUM(B{r}:H{r})-SUM(B{r-1}:H{r-1})",
                             round(monthly_int24[m], 2)))
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
 
-    widths = [22, 14, 12, 12, 14, 12, 12, 12, 14, 12, 12, 12, 12]
+    widths = [20, 16, 13, 13, 15, 13, 13, 13, 15, 12, 12, 12, 12]
     colsxml = cols_xml(widths)
     return worksheet(rows, merges, hyper, 3, colsxml, tab_selected=True,
                      drawing_rid="rId1")
