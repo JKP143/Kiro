@@ -115,6 +115,9 @@ bank_series = {b: [sum(c['principal'] * (c['mfactor'] ** m) for c in calc.values
                    for m in range(24)] for b in BANKS}
 total_series24 = [sum(bank_series[b][m] for b in BANKS) for m in range(24)]
 monthly_int24 = [0.0] + [total_series24[m] - total_series24[m - 1] for m in range(1, 24)]
+# per-bank monthly interest earned (for the stacked column chart)
+bank_monthly_int = {b: [0.0] + [bank_series[b][m] - bank_series[b][m - 1] for m in range(1, 24)]
+                    for b in BANKS}
 BANK_COLORS = {"Maya": "4472C4", "UNO": "ED7D31", "Tonik": "70AD47", "Banko": "C00000",
                "CIMB": "7030A0", "GoTyme": "843C0C", "Maribank": "5B9BD5"}
 
@@ -371,7 +374,7 @@ def build_dashboard():
     for b in BANKS:
         rows.append(f'<row r="{rr}">' + ct(f"A{rr}", S["txt"], b)
                     + cf(f"B{rr}", S["bank_val"],
-                         f"SUMIF(Balance!$B$6:$B$19,A{rr},Balance!$F$6:$F$19)",
+                         f"SUMIF(Balance!$A$6:$A$19,A{rr},Balance!$F$6:$F$19)",
                          round(bank_totals[b], 2)) + "</row>")
         rr += 1
     rows.append('<row r="24">' + ct("A24", S["tot_txt"], "Total")
@@ -379,7 +382,7 @@ def build_dashboard():
 
     # ---- chart section titles (charts float over the empty rows) ------------
     rows.append(band_row(27, S["subsection"], "\U0001F4C8 Savings Growth by Bank (Cumulative Balance)")); merges.append("A27:M27")
-    rows.append(band_row(51, S["subsection"], "\U0001F4CA Monthly Interest Earned")); merges.append("A51:M51")
+    rows.append(band_row(51, S["subsection"], "\U0001F4CA Monthly Interest Earned by Bank")); merges.append("A51:M51")
 
     # ---- Chart data matrix: 24 months x 7 banks + total interest -----------
     rows.append(band_row(77, S["section"], "\U0001F5C2 Chart Data (auto-calculated \u2014 do not edit)")); merges.append("A77:M77")
@@ -401,6 +404,24 @@ def build_dashboard():
         else:
             cells.append(cf(f"I{r}", S["curr"], f"SUM(B{r}:H{r})-SUM(B{r-1}:H{r-1})",
                             round(monthly_int24[m], 2)))
+        rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
+
+    # ---- second matrix: monthly interest earned PER BANK (stacked column) ---
+    rows.append(band_row(105, S["subsection"], "\U0001F5C2 Monthly Interest Earned by Bank (auto)")); merges.append("A105:M105")
+    hdr2 = [ct("A106", S["dhead"], "Month")]
+    for i, b in enumerate(BANKS):
+        hdr2.append(ct(f"{COLS[i+1]}106", S["dhead"], b))
+    rows.append('<row r="106">' + "".join(hdr2) + "</row>")
+    for m in range(24):
+        r = 107 + m          # cumulative counterpart is at row (r - 27)
+        cells = [ct(f"A{r}", S["txt"], MONTH_LABELS[m])]
+        for i, b in enumerate(BANKS):
+            col = COLS[i + 1]
+            if m == 0:
+                cells.append(cn(f"{col}{r}", S["curr"], 0))
+            else:
+                cells.append(cf(f"{col}{r}", S["curr"], f"{col}{r-27}-{col}{r-28}",
+                                round(bank_monthly_int[b][m], 2)))
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
 
     # wide enough for "PHP ###,###.##" currency in the chart-data matrix
@@ -667,6 +688,31 @@ def chart_line_multi(title, catf, catlabels, series):
         '</c:plotArea><c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>'
         '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
 
+def chart_bar_stacked(title, catf, catlabels, series):
+    """Stacked column chart: one series (segment) per bank. series: list of
+    (name_cell, name, val_ref, val_cache_list, colorhex)."""
+    sers = []
+    for i, (namecell, name, valf, valv, color) in enumerate(series):
+        sers.append(
+            f'<c:ser><c:idx val="{i}"/><c:order val="{i}"/>'
+            f'<c:tx><c:strRef><c:f>{namecell}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(name)}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
+            f'<c:spPr><a:solidFill><a:srgbClr val="{color}"/></a:solidFill></c:spPr>'
+            f'<c:cat><c:strRef><c:f>{catf}</c:f>{str_cache(catlabels)}</c:strRef></c:cat>'
+            f'<c:val><c:numRef><c:f>{valf}</c:f>{num_cache(valv)}</c:numRef></c:val></c:ser>')
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<c:chartSpace {CNS}><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
+        '<c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="stacked"/><c:varyColors val="0"/>'
+        + "".join(sers) +
+        '<c:gapWidth val="60"/><c:overlap val="100"/><c:axId val="333"/><c:axId val="444"/></c:barChart>'
+        '<c:catAx><c:axId val="333"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
+        '<c:axPos val="b"/><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Month</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+        '<c:crossAx val="444"/></c:catAx>'
+        '<c:valAx><c:axId val="444"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
+        '<c:axPos val="l"/><c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:p><a:r><a:t>Interest (PHP)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
+        '<c:numFmt formatCode="#,##0" sourceLinked="0"/><c:crossAx val="333"/></c:valAx>'
+        '</c:plotArea><c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>'
+        '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
+
 def chart_bar_cat(title, catf, catlabels, valf, valv, sername):
     ser = (f'<c:ser><c:idx val="0"/><c:order val="0"/>'
            f'<c:tx><c:strRef><c:f>{sername[0]}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(sername[1])}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
@@ -726,9 +772,10 @@ chart1 = chart_line_multi("Savings Growth by Bank (Cumulative Balance)",
 chart2 = chart_pie("\U0001F967 Savings by Bank",
                    "Dashboard!$A$17:$A$23", BANKS, "Dashboard!$B$17:$B$23",
                    [round(bank_totals[b], 2) for b in BANKS], ("Dashboard!$B$16", "Balance"))
-chart3 = chart_bar_cat("Monthly Interest Earned",
-                       "Dashboard!$A$80:$A$103", MONTH_LABELS, "Dashboard!$I$80:$I$103", monthly_int24,
-                       ("Dashboard!$I$79", "Interest Earned"))
+interest_series = [(f"Dashboard!${c}$106", b, f"Dashboard!${c}$107:${c}$130", bank_monthly_int[b], BANK_COLORS[b])
+                   for c, b in zip("BCDEFGH", BANKS)]
+chart3 = chart_bar_stacked("Monthly Interest Earned by Bank",
+                           "Dashboard!$A$107:$A$130", MONTH_LABELS, interest_series)
 drawing = build_drawing()
 
 workbook_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
