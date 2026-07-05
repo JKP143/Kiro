@@ -253,7 +253,7 @@ add("num", 3, 0, 0, 1, 'horizontal="right" vertical="center"')                # 
 
 STYLES_XML = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-    f'<numFmts count="1"><numFmt numFmtId="{CURR}" formatCode="&quot;PHP &quot;#,##0.00"/></numFmts>'
+    f'<numFmts count="1"><numFmt numFmtId="{CURR}" formatCode="[$\u20b1-3409]#,##0.00"/></numFmts>'
     f'<fonts count="{len(FONTS)}">' + "".join(FONTS) + '</fonts>'
     f'<fills count="{len(FILLS)}">' + "".join(FILLS) + '</fills>'
     f'<borders count="{len(BORDERS)}">' + "".join(BORDERS) + '</borders>'
