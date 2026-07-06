@@ -275,6 +275,7 @@ add("m_val_pct", 10, 9, 0, 1, 'horizontal="right" vertical="center"')         # 
 add("m_val_input", CURR, 3, 6, 1, 'horizontal="right" vertical="center"')     # editable goal target: yellow
 add("bank_val", CURR, 0, 0, 1, 'horizontal="right" vertical="center"')        # balance-by-bank value
 add("num", 3, 0, 0, 1, 'horizontal="right" vertical="center"')                # compact #,##0 (chart-data matrix)
+add("date_input", 14, 0, 6, 1, 'horizontal="center" vertical="center"')       # editable date (yellow) - Interest Start
 
 STYLES_XML = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -582,9 +583,9 @@ def build_balance():
 def build_interest():
     NC = 17  # A..Q
     rows, merges, hyper = sheet_open("Interest",
-        "Interest auto-calculates and GROWS ON ITS OWN. 'Balance Today' accrues from each account's first "
-        "deposit date up to today() every time you open the file - daily accounts step up each day, monthly "
-        "accounts each month. Maya Savings = 10%.", 5, ncols=NC)
+        "Interest auto-calculates and GROWS ON ITS OWN. 'Balance Today' accrues from the yellow 'Interest Start' "
+        "date up to TODAY() every time you open the file - daily accounts step up each day, monthly accounts each "
+        "month. Interest Start is pre-filled with your first deposit date; edit it if an account started elsewhere. Maya Savings = 10%.", 5, ncols=NC)
     rows.append(band_row(4, S["section"], "\U0001F4C8 Interest Rates, Earnings & Live Balance", ncols=NC))
     merges.append("A4:Q4")
     heads = ["Bank", "Account", "Account Type", "Account Label", "Annual Rate",
@@ -607,8 +608,9 @@ def build_interest():
             cf(f"L{r}", S["curr"], f"K{r}-G{r}", round(c["int1yr"], 2)),
             cf(f"M{r}", S["pct"], f'IF(F{r}="Daily",(1+E{r}/365)^(365/12),1+E{r}/12)', round(c["mfactor"], 8)),
             # ---- live accrual (grows with TODAY) ----
-            # earliest deposit date via AGGREGATE (works in Excel 2010+, unlike MINIFS)
-            cf(f"N{r}", S["date"], f'IFERROR(AGGREGATE(15,6,Deposit!$A$6:$A$205/(Deposit!$C$6:$C$205=D{r}),1),"")', c["start"]),
+            # Interest Start = a plain EDITABLE date (yellow), pre-filled with the first
+            # deposit date. No lookup functions -> works on every Excel version.
+            cn(f"N{r}", S["date_input"], c["start"]),
             cf(f"O{r}", S["intc"], f'IF(ISNUMBER(N{r}),IF(F{r}="Daily",MAX(0,TODAY()-N{r}),MAX(0,DATEDIF(N{r},TODAY(),"m"))),0)', c["elapsed"]),
             cf(f"P{r}", S["curr"], f"G{r}*((1+H{r})^O{r}-1)", round(c["i2d"], 2)),
             cf(f"Q{r}", S["curr"], f"G{r}+P{r}", round(c["bal_today"], 2)),
