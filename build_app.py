@@ -664,8 +664,16 @@ def build_interest():
     tcells.append(totcur("Q", sum(c['bal_today'] for c in calc.values())))
     rows.append(f'<row r="{tr}" ht="18" customHeight="1">' + "".join(tcells) + "</row>")
 
-    widths = [11, 15, 13, 24, 11, 11, 15, 11, 15, 10, 16, 15, 12, 13, 12, 16, 16]
-    colsxml = cols_xml(widths)
+    widths = [11, 15, 13, 22, 11, 11, 15, 11, 15, 10, 16, 15, 12, 13, 12, 16, 16]
+    # Hide the internal calc columns so the sheet fits on screen (no horizontal
+    # scroll -> the top nav buttons stay visible & clickable):
+    # H Periodic Rate(7), J Periods/Yr(9), M Monthly Factor(12), O Periods Elapsed(14)
+    hidden = {7, 9, 12, 14}
+    _cols = []
+    for i, w in enumerate(widths):
+        hid = ' hidden="1"' if i in hidden else ''
+        _cols.append(f'<col min="{i+1}" max="{i+1}" width="{w}"{hid} customWidth="1"/>')
+    colsxml = "<cols>" + "".join(_cols) + "</cols>"
     return worksheet(rows, merges, hyper, 5, colsxml)
 
 # ============================================================================
