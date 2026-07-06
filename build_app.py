@@ -57,9 +57,10 @@ DEP_ROWS = [(serial(2026, 6, 1), b, lbl, SEED_DEP[lbl], "Opening balance (exampl
 # Transaction rows: (dateserial, type, bank, label, signed amount, note)
 TX_ROWS = [
     (serial(2026, 6, 15), "Withdrawal", "Maya",  "Maya - Savings",     -2000,  "ATM withdrawal (example)"),
-    (serial(2026, 6, 20), "Interest",   "Banko", "Banko - Savings",     62.50, "Interest posting (example)"),
     (serial(2026, 6, 25), "Transfer",   "UNO",   "UNO - Digi Savings",  5000,  "Transfer in (example)"),
 ]
+# Interest is now accrued automatically (see Interest sheet), so it is NOT
+# posted as a manual transaction here (that would double-count).
 
 # ---- compute cached values (so the file shows numbers before recalculation) --
 dep_by_label = {lbl: 0.0 for (_, _, _, lbl, _, _) in ACCOUNTS}
@@ -82,13 +83,26 @@ for (bank, acct, atype, lbl, rate, freq) in ACCOUNTS:
     iper = principal * pr
     projbal = principal * (1 + pr) ** n
     int1yr = projbal - principal
+    # ---- live accrual (grows with TODAY): from earliest deposit date to "today"
+    START = serial(2026, 6, 1)          # earliest deposit date for the seed data
+    REF_TODAY = serial(2026, 7, 5)      # matches the current date for cached preview
+    if freq == "Daily":
+        elapsed = max(0, REF_TODAY - START)                 # days
+    else:
+        # whole months between START and REF_TODAY (like DATEDIF "m")
+        elapsed = max(0, (2026 - 2026) * 12 + (7 - 6) - (1 if 5 < 1 else 0))
+    i2d = principal * ((1 + pr) ** elapsed - 1)             # interest earned to date
+    bal_today = principal + i2d
     calc[lbl] = dict(bank=bank, dep=dep, ntx=ntx, principal=principal, rate=rate,
                      freq=freq, pr=pr, iper=iper, n=n, projbal=projbal,
-                     int1yr=int1yr, mfactor=mfactor)
+                     int1yr=int1yr, mfactor=mfactor, elapsed=elapsed,
+                     i2d=i2d, bal_today=bal_today, start=START)
 
-bank_totals = {b: 0.0 for b in BANKS}
+bank_totals = {b: 0.0 for b in BANKS}      # principal per bank
+bank_today = {b: 0.0 for b in BANKS}       # balance-today (incl. accrued interest) per bank
 for lbl, c in calc.items():
     bank_totals[c["bank"]] += c["principal"]
+    bank_today[c["bank"]] += c["bal_today"]
 
 MONTHS = list(range(0, 13))
 def total_at(m):
@@ -98,6 +112,8 @@ monthly_interest = [0.0] + [growth_total[i] - growth_total[i - 1] for i in range
 
 KPI_total_savings = sum(c["principal"] for c in calc.values())
 KPI_total_deposits = sum(c["dep"] for c in calc.values())
+KPI_balance_today = sum(c["bal_today"] for c in calc.values())      # grows with TODAY()
+KPI_interest_to_date = sum(c["i2d"] for c in calc.values())         # grows with TODAY()
 KPI_proj_interest = sum(c["int1yr"] for c in calc.values())
 KPI_proj_balance = sum(c["projbal"] for c in calc.values())
 
@@ -105,7 +121,7 @@ KPI_proj_balance = sum(c["projbal"] for c in calc.values())
 interest_credited = sum(a for (_, ty, _, _, a, _) in TX_ROWS if ty == "Interest")
 total_withdrawn = -sum(a for (_, ty, _, _, a, _) in TX_ROWS if ty == "Withdrawal")
 GOAL_TARGET = 100000
-maya_goal_balance = calc["Maya - Personal Goal"]["principal"]
+maya_goal_balance = calc["Maya - Personal Goal"]["bal_today"]
 goal_progress = (maya_goal_balance / GOAL_TARGET) if GOAL_TARGET else 0
 
 # 24-month projection: one cumulative series per bank + total monthly interest
@@ -127,7 +143,13 @@ BANK_COLORS = {"Maya": "4472C4", "UNO": "ED7D31", "Tonik": "70AD47", "Banko": "C
 def esc(s):
     return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
-COLS = "ABCDEFGHIJKLM"  # 13 columns
+COLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"  # column letters
+
+def colL(i):            # 0-indexed column number -> letter(s)
+    s = ""; i += 1
+    while i > 0:
+        i, r = divmod(i - 1, 26); s = chr(65 + r) + s
+    return s
 
 def ct(ref, s, val):    # inline text cell
     return f'<c r="{ref}" t="inlineStr" s="{s}"><is><t xml:space="preserve">{esc(val)}</t></is></c>'
@@ -143,7 +165,7 @@ def band_row(rownum, style, text=None, text_style=None, ncols=13):
     """A full-width colored band row across columns A..(ncols)."""
     cells = []
     for i in range(ncols):
-        ref = f"{COLS[i]}{rownum}"
+        ref = f"{colL(i)}{rownum}"
         if i == 0 and text is not None:
             cells.append(ct(ref, text_style if text_style else style, text))
         else:
@@ -156,19 +178,19 @@ NAV = [("Dashboard", "\U0001F3E0 Dashboard"), ("Deposit", "\u2795 Deposit"),
        ("Interest", "\U0001F4C8 Interest")]
 NAV_PAIRS = ["A2:B2", "C2:D2", "E2:F2", "G2:H2", "I2:J2"]
 
-def nav_row(active):
+def nav_row(active, ncols=13):
     cells, hyper, merges = [], [], []
     # button pairs A..J
     for idx, (sheet, label) in enumerate(NAV):
-        left = COLS[idx * 2]; right = COLS[idx * 2 + 1]
+        left = colL(idx * 2); right = colL(idx * 2 + 1)
         s = S["nav_active"] if sheet == active else S["nav"]
         cells.append(ct(f"{left}2", s, label))
         cells.append(ce(f"{right}2", s))
         merges.append(f"{left}2:{right}2")
         hyper.append(f'<hyperlink ref="{left}2:{right}2" location="{sheet}!A1" display="{esc(label)}"/>')
-    # filler K,L,M navy
-    for i in range(10, 13):
-        cells.append(ce(f"{COLS[i]}2", S["nav"]))
+    # filler navy cells beyond the nav buttons
+    for i in range(10, ncols):
+        cells.append(ce(f"{colL(i)}2", S["nav"]))
     row = f'<row r="2" ht="24" customHeight="1">' + "".join(cells) + "</row>"
     return row, merges, hyper
 
@@ -268,22 +290,22 @@ STYLES_XML = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
 # ----------------------------------------------------------------------------
 # Worksheet scaffolding
 # ----------------------------------------------------------------------------
-def sheet_open(active, subtitle, ysplit, tab_selected=False,
-               colwidths=None, extra_sheetpr="", firstcol_end=13):
+def sheet_open(active, subtitle, ysplit, tab_selected=False, ncols=13):
     """Return (rows_list, merges_list, hyper_list) pre-populated with the
-    title band, nav bar and subtitle band."""
+    title band, nav bar and subtitle band spanning `ncols` columns."""
+    last = colL(ncols - 1)
     rows, merges, hyper = [], [], []
     # Row 1 title
     rows.append(band_row(1, S["title"], "\U0001F4B0 Digital Bank Savings Tracker",
-                         text_style=S["title"]))
+                         text_style=S["title"], ncols=ncols))
     rows[-1] = rows[-1].replace('ht="22"', 'ht="30"')
-    merges.append("A1:M1")
+    merges.append(f"A1:{last}1")
     # Row 2 nav
-    nrow, nmerges, nhyper = nav_row(active)
+    nrow, nmerges, nhyper = nav_row(active, ncols=ncols)
     rows.append(nrow); merges += nmerges; hyper += nhyper
     # Row 3 subtitle
-    rows.append(band_row(3, S["subtitle"], subtitle, text_style=S["subtitle"]))
-    merges.append("A3:M3")
+    rows.append(band_row(3, S["subtitle"], subtitle, text_style=S["subtitle"], ncols=ncols))
+    merges.append(f"A3:{last}3")
     return rows, merges, hyper
 
 def cols_xml(widths):
@@ -342,10 +364,10 @@ def build_dashboard():
     # ---- Key Metrics --------------------------------------------------------
     rows.append(band_row(4, S["subsection"], "\U0001F511 Key Metrics")); merges.append("A4:M4")
     metrics = [
-        ("Total Balance (All Accounts)", "SUM(Balance!$F$6:$F$19)", round(KPI_total_savings, 2)),
-        ("Total Deposited (All-Time)",   "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
-        ("Total Interest Credited",      'SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Interest")', round(interest_credited, 2)),
-        ("Total Withdrawn",              '-SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Withdrawal")', round(total_withdrawn, 2)),
+        ("Total Balance Today (incl. interest)", "SUM(Balance!$H$6:$H$19)", round(KPI_balance_today, 2)),
+        ("Total Deposited (All-Time)",           "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
+        ("Interest Earned to Date (auto)",       "SUM(Balance!$G$6:$G$19)", round(KPI_interest_to_date, 2)),
+        ("Total Withdrawn",                      '-SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Withdrawal")', round(total_withdrawn, 2)),
     ]
     r = 5
     for (lbl, formula, cached) in metrics:
@@ -357,10 +379,10 @@ def build_dashboard():
     rows.append(band_row(10, S["subsection"], "\U0001F3AF Personal Goal Tracker")); merges.append("A10:M10")
     rows.append(two_col(11, "Your Savings Goal Target",
                         val_block(11, S["m_val_input"], number=GOAL_TARGET)))
-    rows.append(two_col(12, "Maya Personal Goal \u2014 Current Balance",
+    rows.append(two_col(12, "Maya Personal Goal \u2014 Balance Today",
                         val_block(12, S["m_val"],
-                                  formula='IFERROR(VLOOKUP("Maya - Personal Goal",Balance!$C$6:$F$19,4,FALSE),0)',
-                                  cached=round(maya_goal_balance, 2))))
+                                  formula='IFERROR(VLOOKUP("Maya - Personal Goal",Balance!$C$6:$H$19,6,FALSE),0)',
+                                  cached=round(calc["Maya - Personal Goal"]["bal_today"], 2))))
     rows.append(two_col(13, "Progress Toward Goal",
                         val_block(13, S["m_val_pct"], formula="IFERROR(E12/E11,0)",
                                   cached=round(goal_progress, 4))))
@@ -374,11 +396,11 @@ def build_dashboard():
     for b in BANKS:
         rows.append(f'<row r="{rr}">' + ct(f"A{rr}", S["txt"], b)
                     + cf(f"B{rr}", S["bank_val"],
-                         f"SUMIF(Balance!$A$6:$A$19,A{rr},Balance!$F$6:$F$19)",
-                         round(bank_totals[b], 2)) + "</row>")
+                         f"SUMIF(Balance!$A$6:$A$19,A{rr},Balance!$H$6:$H$19)",
+                         round(bank_today[b], 2)) + "</row>")
         rr += 1
     rows.append('<row r="24">' + ct("A24", S["tot_txt"], "Total")
-                + cf("B24", S["tot_curr"], "SUM(B17:B23)", round(sum(bank_totals.values()), 2)) + "</row>")
+                + cf("B24", S["tot_curr"], "SUM(B17:B23)", round(sum(bank_today.values()), 2)) + "</row>")
 
     # ---- chart section titles (charts float over the empty rows) ------------
     rows.append(band_row(27, S["subsection"], "\U0001F4C8 Savings Growth by Bank (Cumulative Balance)")); merges.append("A27:M27")
@@ -510,13 +532,14 @@ def build_transactions():
 # ============================================================================
 def build_balance():
     rows, merges, hyper = sheet_open("Balance",
-        "Current balance per account = Deposits + Net Transactions. Projected columns include compounding interest from the Interest tab.", 5)
+        "Balance Today grows automatically with interest each day/month. Current Balance = Deposits + Net Transactions (money you moved); Balance Today adds the interest accrued up to today.", 5)
     rows.append(band_row(4, S["section"], "\U0001F4BC Balances by Account"))
     merges.append("A4:M4")
     heads = ["Bank", "Account", "Account Label", "Deposits", "Net Transactions",
-             "Current Balance", "Interest (1 Yr)", "Proj. Balance (1 Yr)"]
-    hcells = [ct(f"{COLS[i]}5", S["thead"], heads[i]) for i in range(8)]
-    for i in range(8, 13):
+             "Current Balance", "Interest to Date", "Balance Today",
+             "Interest (1 Yr)", "Proj. Balance (1 Yr)"]
+    hcells = [ct(f"{COLS[i]}5", S["thead"], heads[i]) for i in range(10)]
+    for i in range(10, 13):
         hcells.append(ce(f"{COLS[i]}5", S["thead"]))
     rows.append('<row r="5" ht="28" customHeight="1">' + "".join(hcells) + "</row>")
     for idx, (bank, acct, atype, lbl, rate, freq) in enumerate(ACCOUNTS):
@@ -527,23 +550,29 @@ def build_balance():
             cf(f"D{r}", S["curr"], f"SUMIFS(Deposit!$D$6:$D$205,Deposit!$C$6:$C$205,C{r})", round(c["dep"], 2)),
             cf(f"E{r}", S["curr"], f"SUMIFS(Transactions!$E$6:$E$205,Transactions!$D$6:$D$205,C{r})", round(c["ntx"], 2)),
             cf(f"F{r}", S["curr"], f"D{r}+E{r}", round(c["principal"], 2)),
-            cf(f"G{r}", S["curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$L$19,9,FALSE),0)", round(c["int1yr"], 2)),
-            cf(f"H{r}", S["curr"], f"F{r}+G{r}", round(c["principal"] + c["int1yr"], 2)),
+            cf(f"G{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2)),
+            cf(f"H{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,14,FALSE),0)", round(c["bal_today"], 2)),
+            cf(f"I{r}", S["curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$L$19,9,FALSE),0)", round(c["int1yr"], 2)),
+            cf(f"J{r}", S["curr"], f"F{r}+I{r}", round(c["principal"] + c["int1yr"], 2)),
         ]
-        for i in range(8, 13):
+        for i in range(10, 13):
             cells.append(ce(f"{COLS[i]}{r}", S["txt_col"]))
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
     # totals row 20
     tr = 20
+    totmap = {'D': 'dep', 'E': 'ntx', 'F': 'principal', 'G': 'i2d', 'H': 'bal_today', 'I': 'int1yr'}
     tcells = [ct(f"A{tr}", S["tot_txt"], "TOTAL")] + [ce(f"{COLS[i]}{tr}", S["tot_txt"]) for i in (1, 2)]
-    for col in "DEFGH":
-        tcells.append(cf(f"{col}{tr}", S["tot_curr"], f"SUM({col}6:{col}19)",
-                         round(sum(calc[l][{'D':'dep','E':'ntx','F':'principal','G':'int1yr','H':'projbal'}[col]] if col!='H' else (calc[l]['principal']+calc[l]['int1yr']) for l in dep_by_label), 2) if col!='H' else round(sum(calc[l]['principal']+calc[l]['int1yr'] for l in dep_by_label),2)))
-    for i in range(8, 13):
+    for col in "DEFGHIJ":
+        if col == 'J':
+            val = sum(calc[l]['principal'] + calc[l]['int1yr'] for l in dep_by_label)
+        else:
+            val = sum(calc[l][totmap[col]] for l in dep_by_label)
+        tcells.append(cf(f"{col}{tr}", S["tot_curr"], f"SUM({col}6:{col}19)", round(val, 2)))
+    for i in range(10, 13):
         tcells.append(ce(f"{COLS[i]}{tr}", S["tot_curr"]))
     rows.append(f'<row r="{tr}" ht="18" customHeight="1">' + "".join(tcells) + "</row>")
 
-    widths = [12, 16, 24, 15, 16, 16, 16, 18, 10, 12, 12, 12, 12]
+    widths = [12, 16, 24, 15, 16, 16, 16, 17, 15, 17, 10, 12, 12]
     colsxml = cols_xml(widths)
     return worksheet(rows, merges, hyper, 5, colsxml)
 
@@ -551,14 +580,18 @@ def build_balance():
 # SHEET: INTEREST (sheet5)
 # ============================================================================
 def build_interest():
+    NC = 17  # A..Q
     rows, merges, hyper = sheet_open("Interest",
-        "Interest rates & auto-calculated earnings. Daily accounts compound daily (rate/365); monthly accounts compound monthly (rate/12). Maya Savings overridden to 10%.", 5)
-    rows.append(band_row(4, S["section"], "\U0001F4C8 Interest Rates & Earnings"))
-    merges.append("A4:M4")
+        "Interest auto-calculates and GROWS ON ITS OWN. 'Balance Today' accrues from each account's first "
+        "deposit date up to today() every time you open the file - daily accounts step up each day, monthly "
+        "accounts each month. Maya Savings = 10%.", 5, ncols=NC)
+    rows.append(band_row(4, S["section"], "\U0001F4C8 Interest Rates, Earnings & Live Balance", ncols=NC))
+    merges.append("A4:Q4")
     heads = ["Bank", "Account", "Account Type", "Account Label", "Annual Rate",
              "Frequency", "Current Balance", "Periodic Rate", "Interest / Period",
-             "Periods / Yr", "Proj. Balance (1 Yr)", "Interest (1 Yr)", "Monthly Factor"]
-    hcells = [ct(f"{COLS[i]}5", S["thead"], heads[i]) for i in range(13)]
+             "Periods / Yr", "Proj. Balance (1 Yr)", "Interest (1 Yr)", "Monthly Factor",
+             "Interest Start", "Periods Elapsed", "Interest to Date", "Balance Today"]
+    hcells = [ct(f"{colL(i)}5", S["thead"], heads[i]) for i in range(NC)]
     rows.append('<row r="5" ht="30" customHeight="1">' + "".join(hcells) + "</row>")
     for idx, (bank, acct, atype, lbl, rate, freq) in enumerate(ACCOUNTS):
         r = 6 + idx; c = calc[lbl]
@@ -573,20 +606,29 @@ def build_interest():
             cf(f"K{r}", S["curr"], f"G{r}*(1+H{r})^J{r}", round(c["projbal"], 2)),
             cf(f"L{r}", S["curr"], f"K{r}-G{r}", round(c["int1yr"], 2)),
             cf(f"M{r}", S["pct"], f'IF(F{r}="Daily",(1+E{r}/365)^(365/12),1+E{r}/12)', round(c["mfactor"], 8)),
+            # ---- live accrual (grows with TODAY) ----
+            cf(f"N{r}", S["date"], f'IF(COUNTIFS(Deposit!$C$6:$C$205,D{r})=0,"",MINIFS(Deposit!$A$6:$A$205,Deposit!$C$6:$C$205,D{r}))', c["start"]),
+            cf(f"O{r}", S["intc"], f'IF(N{r}="",0,IF(F{r}="Daily",MAX(0,TODAY()-N{r}),MAX(0,DATEDIF(N{r},TODAY(),"m"))))', c["elapsed"]),
+            cf(f"P{r}", S["curr"], f"G{r}*((1+H{r})^O{r}-1)", round(c["i2d"], 2)),
+            cf(f"Q{r}", S["curr"], f"G{r}+P{r}", round(c["bal_today"], 2)),
         ]
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
     tr = 20
-    tcells = [ct(f"A{tr}", S["tot_txt"], "TOTAL")] + [ce(f"{COLS[i]}{tr}", S["tot_txt"]) for i in range(1, 6)]
-    tcells.append(cf(f"G{tr}", S["tot_curr"], "SUM(G6:G19)", round(sum(c['principal'] for c in calc.values()), 2)))
+    def totcur(col, val):
+        return cf(f"{col}{tr}", S["tot_curr"], f"SUM({col}6:{col}19)", round(val, 2))
+    tcells = [ct(f"A{tr}", S["tot_txt"], "TOTAL")] + [ce(f"{colL(i)}{tr}", S["tot_txt"]) for i in range(1, 6)]
+    tcells.append(totcur("G", sum(c['principal'] for c in calc.values())))
     tcells.append(ce(f"H{tr}", S["tot_txt"]))
-    tcells.append(cf(f"I{tr}", S["tot_curr"], "SUM(I6:I19)", round(sum(c['iper'] for c in calc.values()), 2)))
+    tcells.append(totcur("I", sum(c['iper'] for c in calc.values())))
     tcells.append(ce(f"J{tr}", S["tot_txt"]))
-    tcells.append(cf(f"K{tr}", S["tot_curr"], "SUM(K6:K19)", round(sum(c['projbal'] for c in calc.values()), 2)))
-    tcells.append(cf(f"L{tr}", S["tot_curr"], "SUM(L6:L19)", round(sum(c['int1yr'] for c in calc.values()), 2)))
-    tcells.append(ce(f"M{tr}", S["tot_txt"]))
+    tcells.append(totcur("K", sum(c['projbal'] for c in calc.values())))
+    tcells.append(totcur("L", sum(c['int1yr'] for c in calc.values())))
+    tcells += [ce(f"M{tr}", S["tot_txt"]), ce(f"N{tr}", S["tot_txt"]), ce(f"O{tr}", S["tot_txt"])]
+    tcells.append(totcur("P", sum(c['i2d'] for c in calc.values())))
+    tcells.append(totcur("Q", sum(c['bal_today'] for c in calc.values())))
     rows.append(f'<row r="{tr}" ht="18" customHeight="1">' + "".join(tcells) + "</row>")
 
-    widths = [11, 15, 13, 24, 11, 11, 16, 12, 16, 11, 18, 16, 13]
+    widths = [11, 15, 13, 24, 11, 11, 15, 11, 15, 10, 16, 15, 12, 13, 12, 16, 16]
     colsxml = cols_xml(widths)
     return worksheet(rows, merges, hyper, 5, colsxml)
 
@@ -771,7 +813,7 @@ chart1 = chart_line_multi("Savings Growth by Bank (Cumulative Balance)",
                           "Dashboard!$A$80:$A$103", MONTH_LABELS, growth_series)
 chart2 = chart_pie("\U0001F967 Savings by Bank",
                    "Dashboard!$A$17:$A$23", BANKS, "Dashboard!$B$17:$B$23",
-                   [round(bank_totals[b], 2) for b in BANKS], ("Dashboard!$B$16", "Balance"))
+                   [round(bank_today[b], 2) for b in BANKS], ("Dashboard!$B$16", "Balance"))
 interest_series = [(f"Dashboard!${c}$106", b, f"Dashboard!${c}$107:${c}$130", bank_monthly_int[b], BANK_COLORS[b])
                    for c, b in zip("BCDEFGH", BANKS)]
 chart3 = chart_bar_stacked("Monthly Interest Earned by Bank",

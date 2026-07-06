@@ -83,24 +83,24 @@ body.append(para("Deposit + Transactions  ->  Balance  ->  Interest  ->  Dashboa
 body.append(para(runs=run("1.  Dashboard", bold=True, color="1F3864", size="28"), style="Heading1", spacing_before="240"))
 body.append(para(runs=run("Key Metrics", bold=True, color="2E5496", size="24")))
 body.append(formula_table([
-    ("E5", "SUM(Balance!$F$6:$F$19)", "Total Balance (All Accounts): adds the Current Balance of all 14 accounts."),
+    ("E5", "SUM(Balance!$H$6:$H$19)", "Total Balance Today (incl. interest): adds every account's Balance Today. Grows on its own as time passes."),
     ("E6", "SUM(Balance!$D$6:$D$19)", "Total Deposited (All-Time): sum of every account's total deposits."),
-    ("E7", 'SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Interest")',
-        'Total Interest Credited: adds the Amount of every transaction whose Type is "Interest".'),
+    ("E7", "SUM(Balance!$G$6:$G$19)",
+        "Interest Earned to Date (auto): total interest accrued so far across all accounts; increases each day/month."),
     ("E8", '-SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Withdrawal")',
         'Total Withdrawn: sums all "Withdrawal" amounts; the leading minus turns the stored negatives into a positive total.'),
 ]))
 body.append(para(runs=run("Personal Goal Tracker", bold=True, color="2E5496", size="24"), spacing_before="160"))
 body.append(formula_table([
     ("E11", "(you type your goal, e.g. 100000)", "Your Savings Goal Target: a value you enter (highlighted yellow), not a formula."),
-    ("E12", 'IFERROR(VLOOKUP("Maya - Personal Goal",Balance!$C$6:$F$19,4,FALSE),0)',
-        "Maya Personal Goal current balance: looks up that account on the Balance sheet and returns its Current Balance."),
+    ("E12", 'IFERROR(VLOOKUP("Maya - Personal Goal",Balance!$C$6:$H$19,6,FALSE),0)',
+        "Maya Personal Goal Balance Today: looks up that account and returns its Balance Today (principal + accrued interest)."),
     ("E13", "IFERROR(E12/E11,0)", "Progress Toward Goal: current goal balance divided by target (shown as a %)."),
 ]))
 body.append(para(runs=run("Balance by Bank (also feeds the pie chart)", bold=True, color="2E5496", size="24"), spacing_before="160"))
 body.append(formula_table([
-    ("B17:B23", "SUMIF(Balance!$A$6:$A$19,A17,Balance!$F$6:$F$19)",
-        "Totals the Current Balance of every account belonging to the bank named in column A (e.g. all Maya accounts)."),
+    ("B17:B23", "SUMIF(Balance!$A$6:$A$19,A17,Balance!$H$6:$H$19)",
+        "Totals the Balance Today of every account belonging to the bank named in column A (e.g. all Maya accounts)."),
     ("B24", "SUM(B17:B23)", "Grand total of all bank balances."),
 ]))
 body.append(para(runs=run("Chart data - Savings Growth (cumulative balance, rows 80-103)", bold=True, color="2E5496", size="24"), spacing_before="160"))
@@ -134,17 +134,22 @@ body.append(formula_table([
         "Deposits: total of all Deposit-tab amounts recorded for this account (matched by Account Label)."),
     ("E6:E19", "SUMIFS(Transactions!$E$6:$E$205,Transactions!$D$6:$D$205,C6)",
         "Net Transactions: sum of all Transaction amounts for this account (withdrawals are negative, so they subtract)."),
-    ("F6:F19", "D6+E6", "Current Balance: Deposits plus Net Transactions."),
-    ("G6:G19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$L$19,9,FALSE),0)",
-        "Interest (1 Yr): pulls the projected 1-year interest for this account from the Interest sheet."),
-    ("H6:H19", "F6+G6", "Projected Balance (1 Yr): current balance plus projected interest."),
-    ("D20:H20", "SUM(D6:D19)", "Column totals row (same SUM pattern for E, F, G and H)."),
+    ("F6:F19", "D6+E6", "Current Balance: Deposits plus Net Transactions (money you moved)."),
+    ("G6:G19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$Q$19,13,FALSE),0)",
+        "Interest to Date: the auto-accrued interest for this account (from the Interest sheet); grows with the date."),
+    ("H6:H19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$Q$19,14,FALSE),0)",
+        "Balance Today: current balance plus interest accrued to date. This is the number that increases on its own."),
+    ("I6:I19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$L$19,9,FALSE),0)",
+        "Interest (1 Yr): projected 1-year interest for this account."),
+    ("J6:J19", "F6+I6", "Projected Balance (1 Yr): current balance plus projected 1-year interest."),
+    ("D20:J20", "SUM(D6:D19)", "Column totals row (same SUM pattern for E, F, G, H, I and J)."),
 ]))
 
 # ---- Interest ----
 body.append(para(runs=run("5.  Interest", bold=True, color="1F3864", size="28"), style="Heading1", spacing_before="240"))
 body.append(para("One row per account (rows 6-19). Daily accounts (Maya/UNO/Banko/CIMB/Maribank savings) compound "
-                 "daily; the rest compound monthly. Maya Savings rate is set to 10%. Example shows row 6."))
+                 "daily; the rest compound monthly. Maya Savings rate is set to 10%. Example shows row 6. "
+                 "Columns N-Q make the balance grow automatically over time using the TODAY() function."))
 body.append(formula_table([
     ("G6:G19", "IFERROR(VLOOKUP(D6,Balance!$C$6:$H$19,4,FALSE),0)",
         "Current Balance: pulls this account's current balance from the Balance sheet."),
@@ -158,12 +163,28 @@ body.append(formula_table([
     ("L6:L19", "K6-G6", "Interest (1 Yr): projected balance minus starting balance = total interest earned in a year."),
     ("M6:M19", 'IF(F6="Daily",(1+E6/365)^(365/12),1+E6/12)',
         "Monthly Growth Factor: how much 1 peso grows in one month (used by the Dashboard growth/interest charts)."),
-    ("G20,I20,K20,L20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, K and L)."),
+    ("N6:N19", 'IF(COUNTIFS(Deposit!$C$6:$C$205,D6)=0,"",MINIFS(Deposit!$A$6:$A$205,Deposit!$C$6:$C$205,D6))',
+        "Interest Start: the earliest deposit date for this account - interest accrues from this date."),
+    ("O6:O19", 'IF(N6="",0,IF(F6="Daily",MAX(0,TODAY()-N6),MAX(0,DATEDIF(N6,TODAY(),"m"))))',
+        "Periods Elapsed: days since the start date for daily accounts, or whole months for monthly accounts, up to TODAY(). "
+        "Because it uses TODAY(), it grows by itself each time you open the file."),
+    ("P6:P19", "G6*((1+H6)^O6-1)",
+        "Interest to Date: compound interest actually earned from the start date until today."),
+    ("Q6:Q19", "G6+P6",
+        "Balance Today: current balance plus interest to date - the amount that increases on its own each day/month."),
+    ("G20,I20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, K, L, P and Q)."),
 ]))
 
-body.append(para(runs=run("Note: these figures currently use example seed data. Replace the entries on the Deposit and "
+body.append(para(runs=run("How the automatic growth works", bold=True, color="1F3864", size="26"), style="Heading1", spacing_before="240"))
+body.append(para("The Interest sheet uses TODAY(), which Excel refreshes every time the file is opened (or recalculated). "
+                 "So each new day, daily-interest accounts grow a little, and each new month, monthly-interest accounts step "
+                 "up - the Balance Today, the Dashboard totals and the Savings-by-Bank pie all rise on their own without you "
+                 "editing anything. Note: this is an estimate of what your money earns; because interest is now accrued "
+                 "automatically, do NOT also record interest as a manual transaction (that would double-count). Actual bank "
+                 "postings and any taxes may differ slightly."))
+body.append(para(runs=run("These figures currently use example seed data. Replace the entries on the Deposit and "
                           "Transactions tabs with your real amounts and every formula above recalculates automatically.",
-                          italic=True, color="808080"), spacing_before="240"))
+                          italic=True, color="808080"), spacing_before="120"))
 
 sectpr = ('<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>'
           '<w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" '
