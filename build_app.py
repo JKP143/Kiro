@@ -134,8 +134,9 @@ monthly_int24 = [0.0] + [total_series24[m] - total_series24[m - 1] for m in rang
 # per-bank monthly interest earned (for the stacked column chart)
 bank_monthly_int = {b: [0.0] + [bank_series[b][m] - bank_series[b][m - 1] for m in range(1, 24)]
                     for b in BANKS}
-BANK_COLORS = {"Maya": "4472C4", "UNO": "ED7D31", "Tonik": "70AD47", "Banko": "C00000",
-               "CIMB": "7030A0", "GoTyme": "843C0C", "Maribank": "5B9BD5"}
+# distinct, well-separated palette (one color per bank, shared by both charts)
+BANK_COLORS = {"Maya": "4472C4", "UNO": "ED7D31", "Tonik": "70AD47", "Banko": "FFC000",
+               "CIMB": "7030A0", "GoTyme": "C00000", "Maribank": "595959"}
 
 # ----------------------------------------------------------------------------
 # XML helpers
@@ -694,6 +695,23 @@ def title_el(text):
             f'<a:r><a:rPr lang="en-US" sz="1200" b="1"><a:solidFill><a:srgbClr val="1F3864"/></a:solidFill></a:rPr>'
             f'<a:t>{esc(text)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>')
 
+# ---- shared chart styling helpers ------------------------------------------
+def axis_title(text, vertical=False):
+    rot = ' rot="-5400000" vert="horz"' if vertical else ''
+    return (f'<c:title><c:tx><c:rich><a:bodyPr{rot}/><a:lstStyle/>'
+            f'<a:p><a:pPr><a:defRPr sz="900" b="1"><a:solidFill><a:srgbClr val="595959"/></a:solidFill></a:defRPr></a:pPr>'
+            f'<a:r><a:rPr lang="en-US" sz="900" b="1"><a:solidFill><a:srgbClr val="595959"/></a:solidFill></a:rPr>'
+            f'<a:t>{esc(text)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>')
+
+# subtle horizontal gridlines
+GRIDLINES = ('<c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill>'
+             '<a:srgbClr val="E7E7E7"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>')
+# rotated, smaller month labels (24 categories)
+CAT_TXPR = ('<c:txPr><a:bodyPr rot="-2700000" spcFirstLastPara="1" vertOverflow="ellipsis" '
+            'vert="horz" wrap="square" anchor="ctr" anchorCtr="1"/><a:lstStyle/>'
+            '<a:p><a:pPr><a:defRPr sz="800"/></a:pPr><a:endParaRPr lang="en-US"/></a:p></c:txPr>')
+PESO_FMT = '<c:numFmt formatCode="[$\u20b1-3409]#,##0" sourceLinked="0"/>'
+
 def chart_pie(title, catf, catv, valf, valv, sername):
     ser = (f'<c:ser><c:idx val="0"/><c:order val="0"/>'
            f'<c:tx><c:strRef><c:f>{sername[0]}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(sername[1])}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
@@ -755,23 +773,23 @@ def chart_line_multi(title, catf, catlabels, series):
         sers.append(
             f'<c:ser><c:idx val="{i}"/><c:order val="{i}"/>'
             f'<c:tx><c:strRef><c:f>{namecell}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(name)}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
-            f'<c:spPr><a:ln w="28575"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill></a:ln></c:spPr>'
+            f'<c:spPr><a:ln w="22225" cap="rnd"><a:solidFill><a:srgbClr val="{color}"/></a:solidFill><a:round/></a:ln></c:spPr>'
             f'<c:marker><c:symbol val="none"/></c:marker>'
             f'<c:cat><c:strRef><c:f>{catf}</c:f>{str_cache(catlabels)}</c:strRef></c:cat>'
             f'<c:val><c:numRef><c:f>{valf}</c:f>{num_cache(valv)}</c:numRef></c:val>'
             f'<c:smooth val="0"/></c:ser>')
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f'<c:chartSpace {CNS}><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
+        f'<c:chartSpace {CNS}><c:roundedCorners val="0"/><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
         '<c:plotArea><c:layout/><c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>'
         + "".join(sers) +
         '<c:marker val="1"/><c:axId val="111"/><c:axId val="222"/></c:lineChart>'
         '<c:catAx><c:axId val="111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
-        '<c:axPos val="b"/><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Month</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
-        '<c:crossAx val="222"/></c:catAx>'
+        '<c:axPos val="b"/>' + axis_title("Month") + CAT_TXPR +
+        '<c:crossAx val="222"/><c:lblOffset val="100"/><c:tickLblSkip val="1"/><c:tickMarkSkip val="1"/><c:noMultiLvlLbl val="0"/></c:catAx>'
         '<c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
-        '<c:axPos val="l"/><c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:p><a:r><a:t>Cumulative Balance (PHP)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
-        '<c:numFmt formatCode="#,##0" sourceLinked="0"/><c:crossAx val="111"/></c:valAx>'
-        '</c:plotArea><c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>'
+        '<c:axPos val="l"/>' + GRIDLINES + axis_title("Cumulative Balance", vertical=True) + PESO_FMT +
+        '<c:crossAx val="111"/></c:valAx>'
+        '</c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>'
         '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
 
 def chart_bar_stacked(title, catf, catlabels, series):
@@ -782,21 +800,21 @@ def chart_bar_stacked(title, catf, catlabels, series):
         sers.append(
             f'<c:ser><c:idx val="{i}"/><c:order val="{i}"/>'
             f'<c:tx><c:strRef><c:f>{namecell}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>{esc(name)}</c:v></c:pt></c:strCache></c:strRef></c:tx>'
-            f'<c:spPr><a:solidFill><a:srgbClr val="{color}"/></a:solidFill></c:spPr>'
+            f'<c:spPr><a:solidFill><a:srgbClr val="{color}"/></a:solidFill><a:ln w="3175"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:ln></c:spPr>'
             f'<c:cat><c:strRef><c:f>{catf}</c:f>{str_cache(catlabels)}</c:strRef></c:cat>'
             f'<c:val><c:numRef><c:f>{valf}</c:f>{num_cache(valv)}</c:numRef></c:val></c:ser>')
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f'<c:chartSpace {CNS}><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
+        f'<c:chartSpace {CNS}><c:roundedCorners val="0"/><c:chart>{title_el(title)}<c:autoTitleDeleted val="0"/>'
         '<c:plotArea><c:layout/><c:barChart><c:barDir val="col"/><c:grouping val="stacked"/><c:varyColors val="0"/>'
         + "".join(sers) +
-        '<c:gapWidth val="60"/><c:overlap val="100"/><c:axId val="333"/><c:axId val="444"/></c:barChart>'
+        '<c:gapWidth val="40"/><c:overlap val="100"/><c:axId val="333"/><c:axId val="444"/></c:barChart>'
         '<c:catAx><c:axId val="333"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
-        '<c:axPos val="b"/><c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>Month</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
-        '<c:crossAx val="444"/></c:catAx>'
+        '<c:axPos val="b"/>' + axis_title("Month") + CAT_TXPR +
+        '<c:crossAx val="444"/><c:lblOffset val="100"/><c:tickLblSkip val="1"/><c:tickMarkSkip val="1"/><c:noMultiLvlLbl val="0"/></c:catAx>'
         '<c:valAx><c:axId val="444"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/>'
-        '<c:axPos val="l"/><c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:p><a:r><a:t>Interest (PHP)</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>'
-        '<c:numFmt formatCode="#,##0" sourceLinked="0"/><c:crossAx val="333"/></c:valAx>'
-        '</c:plotArea><c:legend><c:legendPos val="r"/><c:overlay val="0"/></c:legend>'
+        '<c:axPos val="l"/>' + GRIDLINES + axis_title("Interest Earned", vertical=True) + PESO_FMT +
+        '<c:crossAx val="333"/></c:valAx>'
+        '</c:plotArea><c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>'
         '<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>')
 
 def chart_bar_cat(title, catf, catlabels, valf, valv, sername):
