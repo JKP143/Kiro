@@ -160,6 +160,8 @@ def cf(ref, s, formula, cached=None):   # formula cell (+ optional cached value)
     return f'<c r="{ref}" s="{s}"><f>{esc(formula)}</f>{v}</c>'
 def ce(ref, s):         # empty styled cell
     return f'<c r="{ref}" s="{s}"/>'
+def cf_str(ref, s, formula, cached_text):   # formula cell that returns TEXT
+    return f'<c r="{ref}" s="{s}" t="str"><f>{esc(formula)}</f><v>{esc(cached_text)}</v></c>'
 
 def band_row(rownum, style, text=None, text_style=None, ncols=13):
     """A full-width colored band row across columns A..(ncols)."""
@@ -381,7 +383,7 @@ def build_dashboard():
     # ---- Key Metrics (with a live "figures as of" date on the right) --------
     krow = [ct("A4", S["subsection"], "\U0001F511 Key Metrics")]
     krow += [ce(f"{colL(i)}4", S["subsection"]) for i in range(1, 8)]
-    krow.append(cf("I4", S["subsection_r"], '"Figures as of "&TEXT(TODAY(),"mmm d, yyyy")'))
+    krow.append(cf_str("I4", S["subsection_r"], '"Figures as of "&TEXT(TODAY(),"mmm d, yyyy")', "Figures as of today"))
     krow += [ce(f"{colL(i)}4", S["subsection_r"]) for i in range(9, 13)]
     rows.append('<row r="4" ht="20" customHeight="1">' + "".join(krow) + "</row>")
     merges.append("A4:H4"); merges.append("I4:M4")

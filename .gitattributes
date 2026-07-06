@@ -1,0 +1,8 @@
+# Treat Office files as binary so Git never alters their bytes
+*.xlsx binary
+*.docx binary
+*.xls binary
+*.doc binary
+*.pdf binary
+*.png binary
+*.jpg binary
