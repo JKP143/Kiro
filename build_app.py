@@ -269,6 +269,7 @@ add("dhead",   0, 3, 5, 1, 'horizontal="left" vertical="center"')  # data-region
 add("green_curr", CURR, 9, 8, 1, 'vertical="center"')
 # Dashboard v2 styles
 add("subsection", 0, 3, 5, 0, 'horizontal="left" vertical="center"')          # navy bold on light gray band
+add("subsection_r", 0, 3, 5, 0, 'horizontal="right" vertical="center"')       # right-aligned variant (date stamp)
 add("m_lbl", 0, 3, 7, 1, 'horizontal="left" vertical="center"')               # metric label: navy bold, light blue
 add("m_val", CURR, 3, 0, 1, 'horizontal="right" vertical="center"')           # metric value: currency right, white
 add("m_val_pct", 10, 9, 0, 1, 'horizontal="right" vertical="center"')         # progress %: green bold
@@ -323,8 +324,19 @@ def cols_xml_styled(specs):
         out.append(f'<col min="{i+1}" max="{i+1}" width="{w}"{s} customWidth="1"/>')
     return "<cols>" + "".join(out) + "</cols>"
 
+def dv_list(sqref, formula1, title, prompt):
+    """A dropdown (list) data-validation with an input hint."""
+    return (f'<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" '
+            f'promptTitle="{esc(title)}" prompt="{esc(prompt)}" sqref="{sqref}">'
+            f'<formula1>{formula1}</formula1></dataValidation>')
+
+def databar(sqref, color="FF63C384", lo=0, hi=1):
+    return (f'<conditionalFormatting sqref="{sqref}"><cfRule type="dataBar" priority="1"><dataBar>'
+            f'<cfvo type="num" val="{lo}"/><cfvo type="num" val="{hi}"/>'
+            f'<color rgb="{color}"/></dataBar></cfRule></conditionalFormatting>')
+
 def worksheet(rows, merges, hyper, ysplit, colsxml, tab_selected=False,
-              drawing_rid=None, tablepart_rid=None):
+              drawing_rid=None, tablepart_rid=None, cond_fmt="", validations=None):
     sel = ' tabSelected="1"' if tab_selected else ''
     top = ysplit + 1
     view = (f'<sheetViews><sheetView showGridLines="0"{sel} workbookViewId="0">'
@@ -333,17 +345,21 @@ def worksheet(rows, merges, hyper, ysplit, colsxml, tab_selected=False,
     mc = ''
     if merges:
         mc = f'<mergeCells count="{len(merges)}">' + "".join(f'<mergeCell ref="{m}"/>' for m in merges) + '</mergeCells>'
+    dv = ''
+    if validations:
+        dv = f'<dataValidations count="{len(validations)}">' + "".join(validations) + '</dataValidations>'
     hl = ''
     if hyper:
         hl = '<hyperlinks>' + "".join(hyper) + '</hyperlinks>'
     dr = f'<drawing r:id="{drawing_rid}"/>' if drawing_rid else ''
     tp = f'<tableParts count="1"><tablePart r:id="{tablepart_rid}"/></tableParts>' if tablepart_rid else ''
     data = "".join(rows)
+    # schema order: sheetData, mergeCells, conditionalFormatting, dataValidations, hyperlinks, drawing, tableParts
     return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         + view + '<sheetFormatPr defaultRowHeight="15"/>' + colsxml
-        + '<sheetData>' + data + '</sheetData>' + mc + hl + dr + tp + '</worksheet>')
+        + '<sheetData>' + data + '</sheetData>' + mc + cond_fmt + dv + hl + dr + tp + '</worksheet>')
 
 # ============================================================================
 # SHEET: DASHBOARD (sheet1)
@@ -362,8 +378,13 @@ def build_dashboard():
                else cn(f"E{rn}", style, number))
         return [top] + [ce(f"{COLS[i]}{rn}", style) for i in (5, 6, 7)]
 
-    # ---- Key Metrics --------------------------------------------------------
-    rows.append(band_row(4, S["subsection"], "\U0001F511 Key Metrics")); merges.append("A4:M4")
+    # ---- Key Metrics (with a live "figures as of" date on the right) --------
+    krow = [ct("A4", S["subsection"], "\U0001F511 Key Metrics")]
+    krow += [ce(f"{colL(i)}4", S["subsection"]) for i in range(1, 8)]
+    krow.append(cf("I4", S["subsection_r"], '"Figures as of "&TEXT(TODAY(),"mmm d, yyyy")'))
+    krow += [ce(f"{colL(i)}4", S["subsection_r"]) for i in range(9, 13)]
+    rows.append('<row r="4" ht="20" customHeight="1">' + "".join(krow) + "</row>")
+    merges.append("A4:H4"); merges.append("I4:M4")
     metrics = [
         ("Total Balance Today (incl. interest)", "SUM(Balance!$H$6:$H$19)", round(KPI_balance_today, 2)),
         ("Total Deposited (All-Time)",           "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
@@ -451,7 +472,7 @@ def build_dashboard():
     widths = [20, 16, 16, 16, 16, 16, 16, 16, 16, 12, 12, 12, 12]
     colsxml = cols_xml(widths)
     return worksheet(rows, merges, hyper, 3, colsxml, tab_selected=True,
-                     drawing_rid="rId1")
+                     drawing_rid="rId1", cond_fmt=databar("E13"))
 
 # ============================================================================
 # SHEET: DEPOSIT (sheet2)  -- Excel Table with filters
@@ -489,7 +510,11 @@ def build_deposit():
              (15, S["curr_col"]), (28, S["txt_col"]), (10, None), (10, None),
              (10, None), (12, None), (12, None), (12, None), (12, None), (12, None)]
     colsxml = cols_xml_styled(specs)
-    ws = worksheet(rows, merges, hyper, 5, colsxml, tablepart_rid="rId1")
+    vals = [
+        dv_list("B6:B205", "BankList", "Pick a bank", "Choose the bank from the drop-down list."),
+        dv_list("C6:C205", "AccountList", "Pick an account", "Choose the account from the drop-down list so the balance matches correctly."),
+    ]
+    ws = worksheet(rows, merges, hyper, 5, colsxml, tablepart_rid="rId1", validations=vals)
     return ws, table_xml
 
 # ============================================================================
@@ -525,7 +550,13 @@ def build_transactions():
              (24, S["txt_col"]), (15, S["curr_col"]), (28, S["txt_col"]),
              (10, None), (10, None), (12, None), (12, None), (12, None), (12, None), (12, None)]
     colsxml = cols_xml_styled(specs)
-    ws = worksheet(rows, merges, hyper, 5, colsxml, tablepart_rid="rId1")
+    vals = [
+        dv_list("B6:B205", '"Deposit,Withdrawal,Transfer,Adjustment,Fee"', "Pick a type",
+                "Choose the transaction type. (Interest is added automatically - no need to record it here.)"),
+        dv_list("C6:C205", "BankList", "Pick a bank", "Choose the bank from the drop-down list."),
+        dv_list("D6:D205", "AccountList", "Pick an account", "Choose the account from the drop-down list."),
+    ]
+    ws = worksheet(rows, merges, hyper, 5, colsxml, tablepart_rid="rId1", validations=vals)
     return ws, table_xml
 
 # ============================================================================
@@ -831,7 +862,12 @@ workbook_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<sheet name="Transactions" sheetId="3" r:id="rId3"/>'
     '<sheet name="Balance" sheetId="4" r:id="rId4"/>'
     '<sheet name="Interest" sheetId="5" r:id="rId5"/>'
-    '</sheets><calcPr calcId="0" fullCalcOnLoad="1"/></workbook>')
+    '</sheets>'
+    '<definedNames>'
+    '<definedName name="BankList">Dashboard!$A$17:$A$23</definedName>'
+    '<definedName name="AccountList">Interest!$D$6:$D$19</definedName>'
+    '</definedNames>'
+    '<calcPr calcId="0" fullCalcOnLoad="1"/></workbook>')
 
 workbook_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
