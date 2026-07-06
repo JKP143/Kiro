@@ -163,9 +163,10 @@ body.append(formula_table([
     ("L6:L19", "K6-G6", "Interest (1 Yr): projected balance minus starting balance = total interest earned in a year."),
     ("M6:M19", 'IF(F6="Daily",(1+E6/365)^(365/12),1+E6/12)',
         "Monthly Growth Factor: how much 1 peso grows in one month (used by the Dashboard growth/interest charts)."),
-    ("N6:N19", 'IF(COUNTIFS(Deposit!$C$6:$C$205,D6)=0,"",MINIFS(Deposit!$A$6:$A$205,Deposit!$C$6:$C$205,D6))',
-        "Interest Start: the earliest deposit date for this account - interest accrues from this date."),
-    ("O6:O19", 'IF(N6="",0,IF(F6="Daily",MAX(0,TODAY()-N6),MAX(0,DATEDIF(N6,TODAY(),"m"))))',
+    ("N6:N19", 'IFERROR(AGGREGATE(15,6,Deposit!$A$6:$A$205/(Deposit!$C$6:$C$205=D6),1),"")',
+        "Interest Start: the earliest deposit date for this account - interest accrues from this date. "
+        "Uses AGGREGATE (Excel 2010+) so it works in older Excel versions too."),
+    ("O6:O19", 'IF(ISNUMBER(N6),IF(F6="Daily",MAX(0,TODAY()-N6),MAX(0,DATEDIF(N6,TODAY(),"m"))),0)',
         "Periods Elapsed: days since the start date for daily accounts, or whole months for monthly accounts, up to TODAY(). "
         "Because it uses TODAY(), it grows by itself each time you open the file."),
     ("P6:P19", "G6*((1+H6)^O6-1)",

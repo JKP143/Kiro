@@ -607,8 +607,9 @@ def build_interest():
             cf(f"L{r}", S["curr"], f"K{r}-G{r}", round(c["int1yr"], 2)),
             cf(f"M{r}", S["pct"], f'IF(F{r}="Daily",(1+E{r}/365)^(365/12),1+E{r}/12)', round(c["mfactor"], 8)),
             # ---- live accrual (grows with TODAY) ----
-            cf(f"N{r}", S["date"], f'IF(COUNTIFS(Deposit!$C$6:$C$205,D{r})=0,"",MINIFS(Deposit!$A$6:$A$205,Deposit!$C$6:$C$205,D{r}))', c["start"]),
-            cf(f"O{r}", S["intc"], f'IF(N{r}="",0,IF(F{r}="Daily",MAX(0,TODAY()-N{r}),MAX(0,DATEDIF(N{r},TODAY(),"m"))))', c["elapsed"]),
+            # earliest deposit date via AGGREGATE (works in Excel 2010+, unlike MINIFS)
+            cf(f"N{r}", S["date"], f'IFERROR(AGGREGATE(15,6,Deposit!$A$6:$A$205/(Deposit!$C$6:$C$205=D{r}),1),"")', c["start"]),
+            cf(f"O{r}", S["intc"], f'IF(ISNUMBER(N{r}),IF(F{r}="Daily",MAX(0,TODAY()-N{r}),MAX(0,DATEDIF(N{r},TODAY(),"m"))),0)', c["elapsed"]),
             cf(f"P{r}", S["curr"], f"G{r}*((1+H{r})^O{r}-1)", round(c["i2d"], 2)),
             cf(f"Q{r}", S["curr"], f"G{r}+P{r}", round(c["bal_today"], 2)),
         ]
