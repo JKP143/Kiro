@@ -542,15 +542,17 @@ def build_transactions():
             cn(f"A{r}", S["date_col"], ds) + ct(f"B{r}", S["txt_col"], ty) +
             ct(f"C{r}", S["txt_col"], bank) + ct(f"D{r}", S["txt_col"], lbl) +
             cn(f"E{r}", S["curr_col"], amt) + ct(f"F{r}", S["txt_col"], note) + "</row>")
-    TABLE_LAST = 45
+    TABLE_LAST = 20   # keep the log compact so the interest section is visible right below it
     # ---- Auto-interest ledger (BELOW the table, separate rows so filtering the
     #      table above never hides it). Read-only formula rows. ---------------
-    rows.append(band_row(47, S["section"], "\U0001FA99 Interest Earned  (auto-posted \u2014 do not edit)"))
-    merges.append("A47:M47")
-    rows.append('<row r="48" ht="20" customHeight="1">'
-                + "".join(ct(f"{colL(i)}48", S["thead"], mheads[i]) for i in range(6)) + "</row>")
+    IB = 22           # interest band row
+    rows.append(band_row(IB, S["section"], "\U0001FA99 Interest Earned  (auto-posted \u2014 do not edit)"))
+    merges.append(f"A{IB}:M{IB}")
+    rows.append(f'<row r="{IB+1}" ht="20" customHeight="1">'
+                + "".join(ct(f"{colL(i)}{IB+1}", S["thead"], mheads[i]) for i in range(6)) + "</row>")
+    first = IB + 2    # 24
     for i, (bank, acct, atype, lbl, rate, freq) in enumerate(ACCOUNTS):
-        r = 49 + i; c = calc[lbl]
+        r = first + i; c = calc[lbl]
         rows.append(f'<row r="{r}">'
             + cf(f"A{r}", S["date"], "TODAY()", REF_TODAY)
             + ct(f"B{r}", S["txt"], "Interest")
@@ -558,11 +560,13 @@ def build_transactions():
             + ct(f"D{r}", S["txt"], lbl)
             + cf(f"E{r}", S["green_curr"], f"IFERROR(VLOOKUP(D{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2))
             + ct(f"F{r}", S["txt"], "Interest earned to date") + "</row>")
-    rows.append('<row r="63" ht="18" customHeight="1">'
-                + ct("A63", S["tot_txt"], "") + ct("B63", S["tot_txt"], "") + ct("C63", S["tot_txt"], "")
-                + ct("D63", S["tot_txt"], "Total interest")
-                + cf("E63", S["tot_curr"], "SUM(E49:E62)", round(sum(c["i2d"] for c in calc.values()), 2))
-                + ct("F63", S["tot_txt"], "") + "</row>")
+    last = first + len(ACCOUNTS) - 1   # 37
+    tot = last + 1                     # 38
+    rows.append(f'<row r="{tot}" ht="18" customHeight="1">'
+                + ct(f"A{tot}", S["tot_txt"], "") + ct(f"B{tot}", S["tot_txt"], "") + ct(f"C{tot}", S["tot_txt"], "")
+                + ct(f"D{tot}", S["tot_txt"], "Total interest")
+                + cf(f"E{tot}", S["tot_curr"], f"SUM(E{first}:E{last})", round(sum(c["i2d"] for c in calc.values()), 2))
+                + ct(f"F{tot}", S["tot_txt"], "") + "</row>")
     table_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         f'id="2" name="tblTransactions" displayName="tblTransactions" ref="A5:F{TABLE_LAST}" totalsRowShown="0">'
