@@ -184,7 +184,7 @@ body.append(formula_table([
         "Interest to Date: compound interest actually earned from the start date until today."),
     ("Q6:Q19", "G6+P6",
         "Balance Today: current balance plus interest to date - the amount that increases on its own each day/month."),
-    ("G20,I20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, K, L, P and Q)."),
+    ("G20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals (same SUM pattern for K, L, P and Q). Interest / Period is intentionally NOT totalled - it mixes per-day and per-month figures, so a sum would be meaningless."),
 ]))
 
 body.append(para(runs=run("How the automatic growth works", bold=True, color="1F3864", size="26"), style="Heading1", spacing_before="240"))

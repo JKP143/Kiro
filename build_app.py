@@ -678,7 +678,9 @@ def build_interest():
     tcells = [ct(f"A{tr}", S["tot_txt"], "TOTAL")] + [ce(f"{colL(i)}{tr}", S["tot_txt"]) for i in range(1, 6)]
     tcells.append(totcur("G", sum(c['principal'] for c in calc.values())))
     tcells.append(ce(f"H{tr}", S["tot_txt"]))
-    tcells.append(totcur("I", sum(c['iper'] for c in calc.values())))
+    # No total for Interest / Period: it mixes daily (per-day) and monthly
+    # (per-month) figures, so summing them is not meaningful.
+    tcells.append(ce(f"I{tr}", S["tot_txt"]))
     tcells.append(ce(f"J{tr}", S["tot_txt"]))
     tcells.append(totcur("K", sum(c['projbal'] for c in calc.values())))
     tcells.append(totcur("L", sum(c['int1yr'] for c in calc.values())))
