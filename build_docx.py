@@ -167,10 +167,11 @@ body.append(formula_table([
     ("H6:H19", 'IF(F6="Daily",E6/365,E6/12)',
         "Periodic Rate: annual rate / 365 for daily accounts, or / 12 for monthly accounts."),
     ("I6:I19", "G6*E6/365",
-        "Interest / Day: Current Balance x Annual Rate / 365 = the interest earned in one day, shown for every account so the column totals cleanly."),
-    ("J6:J19", 'IF(F6="Daily",365,12)', "Periods / Yr: 365 for daily accounts, 12 for monthly."),
-    ("K6:K19", "G6*(1+H6)^J6",
-        "Projected Balance (1 Yr): compound-interest formula balance x (1 + periodic rate) ^ periods. This is what makes interest grow on itself."),
+        "Interest / Day (est.): Current Balance x Annual Rate / 365 = interest earned in one day, shown for every account."),
+    ("J6:J19", "G6*E6/12",
+        "Interest / Month (est.): Current Balance x Annual Rate / 12 = interest earned in one month, shown beside Interest / Day so you can compare both rates."),
+    ("K6:K19", "G6*(1+H6)^R6",
+        "Projected Balance (1 Yr): compound-interest formula balance x (1 + periodic rate) ^ periods (periods come from column R). This is what makes interest grow on itself."),
     ("L6:L19", "K6-G6", "Interest (1 Yr): projected balance minus starting balance = total interest earned in a year."),
     ("M6:M19", 'IF(F6="Daily",(1+E6/365)^(365/12),1+E6/12)',
         "Monthly Growth Factor: how much 1 peso grows in one month (used by the Dashboard growth/interest charts)."),
@@ -184,7 +185,9 @@ body.append(formula_table([
         "Interest to Date: compound interest actually earned from the start date until today."),
     ("Q6:Q19", "G6+P6",
         "Balance Today: current balance plus interest to date - the amount that increases on its own each day/month."),
-    ("G20,I20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, K, L, P and Q). Interest / Day totals cleanly now that every account is on a per-day basis."),
+    ("R6:R19", 'IF(F6="Daily",365,12)',
+        "Periods / Yr (hidden helper): 365 for daily accounts, 12 for monthly - used by the 1-year projection in column K."),
+    ("G20,I20,J20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, J, K, L, P and Q). Interest / Day and Interest / Month each total cleanly since every account is on the same basis."),
 ]))
 
 body.append(para(runs=run("How the automatic growth works", bold=True, color="1F3864", size="26"), style="Heading1", spacing_before="240"))
