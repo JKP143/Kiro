@@ -81,6 +81,7 @@ for (bank, acct, atype, lbl, rate, freq) in ACCOUNTS:
         pr = rate / 12; n = 12
         mfactor = 1 + rate / 12
     iper = principal * pr
+    iday = principal * rate / 365          # daily-equivalent interest (all accounts)
     projbal = principal * (1 + pr) ** n
     int1yr = projbal - principal
     # ---- live accrual (grows with TODAY): from earliest deposit date to "today"
@@ -94,7 +95,7 @@ for (bank, acct, atype, lbl, rate, freq) in ACCOUNTS:
     i2d = principal * ((1 + pr) ** elapsed - 1)             # interest earned to date
     bal_today = principal + i2d
     calc[lbl] = dict(bank=bank, dep=dep, ntx=ntx, principal=principal, rate=rate,
-                     freq=freq, pr=pr, iper=iper, n=n, projbal=projbal,
+                     freq=freq, pr=pr, iper=iper, iday=iday, n=n, projbal=projbal,
                      int1yr=int1yr, mfactor=mfactor, elapsed=elapsed,
                      i2d=i2d, bal_today=bal_today, start=START)
 
@@ -645,7 +646,7 @@ def build_interest():
     rows.append(band_row(4, S["section"], "\U0001F4C8 Interest Rates, Earnings & Live Balance", ncols=NC))
     merges.append("A4:Q4")
     heads = ["Bank", "Account", "Account Type", "Account Label", "Annual Rate",
-             "Frequency", "Current Balance", "Periodic Rate", "Interest / Period",
+             "Frequency", "Current Balance", "Periodic Rate", "Interest / Day",
              "Periods / Yr", "Proj. Balance (1 Yr)", "Interest (1 Yr)", "Monthly Factor",
              "Interest Start", "Periods Elapsed", "Interest to Date", "Balance Today"]
     hcells = [ct(f"{colL(i)}5", S["thead"], heads[i]) for i in range(NC)]
@@ -658,7 +659,7 @@ def build_interest():
             cn(f"E{r}", S["pct"], rate), ct(f"F{r}", S["txt_c"], freq),
             cf(f"G{r}", S["curr"], f"IFERROR(VLOOKUP(D{r},Balance!$C$6:$H$19,4,FALSE),0)", round(c["principal"], 2)),
             cf(f"H{r}", S["pct"], f'IF(F{r}="Daily",E{r}/365,E{r}/12)', round(c["pr"], 8)),
-            cf(f"I{r}", S["curr"], f"G{r}*H{r}", round(c["iper"], 2)),
+            cf(f"I{r}", S["curr"], f"G{r}*E{r}/365", round(c["iday"], 2)),
             cf(f"J{r}", S["intc"], f'IF(F{r}="Daily",365,12)', c["n"]),
             cf(f"K{r}", S["curr"], f"G{r}*(1+H{r})^J{r}", round(c["projbal"], 2)),
             cf(f"L{r}", S["curr"], f"K{r}-G{r}", round(c["int1yr"], 2)),
@@ -678,9 +679,9 @@ def build_interest():
     tcells = [ct(f"A{tr}", S["tot_txt"], "TOTAL")] + [ce(f"{colL(i)}{tr}", S["tot_txt"]) for i in range(1, 6)]
     tcells.append(totcur("G", sum(c['principal'] for c in calc.values())))
     tcells.append(ce(f"H{tr}", S["tot_txt"]))
-    # No total for Interest / Period: it mixes daily (per-day) and monthly
-    # (per-month) figures, so summing them is not meaningful.
-    tcells.append(ce(f"I{tr}", S["tot_txt"]))
+    # Interest / Day is now on one basis (per day for all), so the total is meaningful.
+    # Cache the sum of the per-cell rounded values so it matches Excel's recalculated SUM.
+    tcells.append(totcur("I", sum(round(c['iday'], 2) for c in calc.values())))
     tcells.append(ce(f"J{tr}", S["tot_txt"]))
     tcells.append(totcur("K", sum(c['projbal'] for c in calc.values())))
     tcells.append(totcur("L", sum(c['int1yr'] for c in calc.values())))

@@ -166,8 +166,8 @@ body.append(formula_table([
         "Current Balance: pulls this account's current balance from the Balance sheet."),
     ("H6:H19", 'IF(F6="Daily",E6/365,E6/12)',
         "Periodic Rate: annual rate / 365 for daily accounts, or / 12 for monthly accounts."),
-    ("I6:I19", "G6*H6",
-        "Interest / Period: balance x periodic rate = the daily earning (daily accounts) or monthly earning (monthly accounts)."),
+    ("I6:I19", "G6*E6/365",
+        "Interest / Day: Current Balance x Annual Rate / 365 = the interest earned in one day, shown for every account so the column totals cleanly."),
     ("J6:J19", 'IF(F6="Daily",365,12)', "Periods / Yr: 365 for daily accounts, 12 for monthly."),
     ("K6:K19", "G6*(1+H6)^J6",
         "Projected Balance (1 Yr): compound-interest formula balance x (1 + periodic rate) ^ periods. This is what makes interest grow on itself."),
@@ -184,7 +184,7 @@ body.append(formula_table([
         "Interest to Date: compound interest actually earned from the start date until today."),
     ("Q6:Q19", "G6+P6",
         "Balance Today: current balance plus interest to date - the amount that increases on its own each day/month."),
-    ("G20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals (same SUM pattern for K, L, P and Q). Interest / Period is intentionally NOT totalled - it mixes per-day and per-month figures, so a sum would be meaningless."),
+    ("G20,I20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, K, L, P and Q). Interest / Day totals cleanly now that every account is on a per-day basis."),
 ]))
 
 body.append(para(runs=run("How the automatic growth works", bold=True, color="1F3864", size="26"), style="Heading1", spacing_before="240"))
