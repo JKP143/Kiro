@@ -392,7 +392,7 @@ def build_dashboard():
         ("Total Current Balance (incl. interest)", "SUM(Balance!$H$6:$H$19)", round(KPI_balance_today, 2)),
         ("Total Deposited (All-Time)",           "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
         ("Interest Earned to Date (auto)",       "SUM(Balance!$G$6:$G$19)", round(KPI_interest_to_date, 2)),
-        ("Total Withdrawn",                      '-SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Withdrawal")', round(total_withdrawn, 2)),
+        ("Total Withdrawn",                      '-SUMIFS(tblTransactions[Amount],tblTransactions[Type],"Withdrawal")', round(total_withdrawn, 2)),
     ]
     r = 5
     for (lbl, formula, cached) in metrics:
@@ -525,72 +525,61 @@ def build_deposit():
 # ============================================================================
 def build_transactions():
     rows, merges, hyper = sheet_open("Transactions",
-        "LEFT = money you move (deposits/withdrawals/transfers) - use the filters; use negative amounts for money out. "
-        "RIGHT = interest earned, posted automatically and already included in your Current Balance (do not edit).", 5)
-    # Row 4: two section bands (manual log | auto interest)
-    r4 = []
-    for i in range(13):
-        ref = f"{colL(i)}4"
-        if i == 0:
-            r4.append(ct(ref, S["section"], "\U0001F504 Transaction Log  (money you move)"))
-        elif i == 7:
-            r4.append(ct(ref, S["section"], "\U0001FA99 Interest Earned  (auto-posted \u2014 do not edit)"))
-        else:
-            r4.append(ce(ref, S["section"]))
-    rows.append('<row r="4" ht="20" customHeight="1">' + "".join(r4) + "</row>")
-    merges.append("A4:F4"); merges.append("H4:M4")
-    # Row 5: headers  (manual A-F | spacer G | auto-interest ledger H-M)
+        "Log money you move here (deposits/withdrawals/transfers) - use negative amounts for money out, and the filter "
+        "arrows to search. Interest earned is listed automatically further down and is already included in your Current "
+        "Balance - do not edit it.", 5)
     mheads = ["Date", "Type", "Bank", "Account", "Amount", "Notes"]
-    h = [ct(f"{colL(i)}5", S["thead"], mheads[i]) for i in range(6)]
-    h.append(ce("G5", S["default"]))
-    for j, name in enumerate(["Date", "Type", "Bank", "Account", "Amount", "Notes"]):
-        h.append(ct(f"{colL(7+j)}5", S["thead"], name))
-    rows.append('<row r="5" ht="20" customHeight="1">' + "".join(h) + "</row>")
-    # Rows 6-19: manual seed rows (6-7) on the left + auto-interest ledger (all 14) on the right
-    for i in range(14):
-        r = 6 + i
-        cells = []
-        if i < len(TX_ROWS):
-            ds, ty, bank, lbl, amt, note = TX_ROWS[i]
-            cells += [cn(f"A{r}", S["date_col"], ds), ct(f"B{r}", S["txt_col"], ty),
-                      ct(f"C{r}", S["txt_col"], bank), ct(f"D{r}", S["txt_col"], lbl),
-                      cn(f"E{r}", S["curr_col"], amt), ct(f"F{r}", S["txt_col"], note)]
-        lbank, lacct, latype, llbl, lrate, lfreq = ACCOUNTS[i]
-        c = calc[llbl]
-        cells += [
-            cf(f"H{r}", S["date"], "TODAY()", REF_TODAY),
-            ct(f"I{r}", S["txt"], "Interest"),
-            ct(f"J{r}", S["txt"], lbank),
-            ct(f"K{r}", S["txt"], llbl),
-            cf(f"L{r}", S["green_curr"], f"IFERROR(VLOOKUP(K{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2)),
-            ct(f"M{r}", S["txt"], "Interest earned to date"),
-        ]
-        rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
-    # Auto-interest total (row 20)
-    rows.append('<row r="20" ht="18" customHeight="1">'
-                + ct("K20", S["tot_txt"], "Total interest")
-                + cf("L20", S["tot_curr"], "SUM(L6:L19)", round(sum(c["i2d"] for c in calc.values()), 2))
-                + "</row>")
+    # ---- Manual transaction log (Excel Table, rows 5-45) --------------------
+    rows.append(band_row(4, S["section"], "\U0001F504 Transaction Log  (money you move \u2014 use the filters)"))
+    merges.append("A4:M4")
+    rows.append('<row r="5" ht="20" customHeight="1">'
+                + "".join(ct(f"{colL(i)}5", S["thead"], mheads[i]) for i in range(6)) + "</row>")
+    for idx, (ds, ty, bank, lbl, amt, note) in enumerate(TX_ROWS):
+        r = 6 + idx
+        rows.append(f'<row r="{r}">' +
+            cn(f"A{r}", S["date_col"], ds) + ct(f"B{r}", S["txt_col"], ty) +
+            ct(f"C{r}", S["txt_col"], bank) + ct(f"D{r}", S["txt_col"], lbl) +
+            cn(f"E{r}", S["curr_col"], amt) + ct(f"F{r}", S["txt_col"], note) + "</row>")
+    TABLE_LAST = 45
+    # ---- Auto-interest ledger (BELOW the table, separate rows so filtering the
+    #      table above never hides it). Read-only formula rows. ---------------
+    rows.append(band_row(47, S["section"], "\U0001FA99 Interest Earned  (auto-posted \u2014 do not edit)"))
+    merges.append("A47:M47")
+    rows.append('<row r="48" ht="20" customHeight="1">'
+                + "".join(ct(f"{colL(i)}48", S["thead"], mheads[i]) for i in range(6)) + "</row>")
+    for i, (bank, acct, atype, lbl, rate, freq) in enumerate(ACCOUNTS):
+        r = 49 + i; c = calc[lbl]
+        rows.append(f'<row r="{r}">'
+            + cf(f"A{r}", S["date"], "TODAY()", REF_TODAY)
+            + ct(f"B{r}", S["txt"], "Interest")
+            + ct(f"C{r}", S["txt"], bank)
+            + ct(f"D{r}", S["txt"], lbl)
+            + cf(f"E{r}", S["green_curr"], f"IFERROR(VLOOKUP(D{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2))
+            + ct(f"F{r}", S["txt"], "Interest earned to date") + "</row>")
+    rows.append('<row r="63" ht="18" customHeight="1">'
+                + ct("A63", S["tot_txt"], "") + ct("B63", S["tot_txt"], "") + ct("C63", S["tot_txt"], "")
+                + ct("D63", S["tot_txt"], "Total interest")
+                + cf("E63", S["tot_curr"], "SUM(E49:E62)", round(sum(c["i2d"] for c in calc.values()), 2))
+                + ct("F63", S["tot_txt"], "") + "</row>")
     table_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-        'id="2" name="tblTransactions" displayName="tblTransactions" ref="A5:F205" totalsRowShown="0">'
-        '<autoFilter ref="A5:F205"/>'
+        f'id="2" name="tblTransactions" displayName="tblTransactions" ref="A5:F{TABLE_LAST}" totalsRowShown="0">'
+        f'<autoFilter ref="A5:F{TABLE_LAST}"/>'
         '<tableColumns count="6">'
         '<tableColumn id="1" name="Date"/><tableColumn id="2" name="Type"/>'
         '<tableColumn id="3" name="Bank"/><tableColumn id="4" name="Account"/>'
         '<tableColumn id="5" name="Amount"/><tableColumn id="6" name="Notes"/></tableColumns>'
         '<tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" '
         'showRowStripes="1" showColumnStripes="0"/></table>')
-    specs = [(12, S["date_col"]), (12, S["txt_col"]), (10, S["txt_col"]),
-             (18, S["txt_col"]), (13, S["curr_col"]), (15, S["txt_col"]),
-             (3, None), (11, S["date_col"]), (9, S["txt_col"]), (9, S["txt_col"]),
-             (18, S["txt_col"]), (13, S["curr_col"]), (16, S["txt_col"])]
+    specs = [(13, S["date_col"]), (14, S["txt_col"]), (12, S["txt_col"]),
+             (24, S["txt_col"]), (15, S["curr_col"]), (28, S["txt_col"]),
+             (10, None), (10, None), (12, None), (12, None), (12, None), (12, None), (12, None)]
     colsxml = cols_xml_styled(specs)
     vals = [
-        dv_list("B6:B205", '"Deposit,Withdrawal,Transfer,Adjustment,Fee"', "Pick a type",
-                "Choose the transaction type. (Interest is added automatically on the right - no need to record it here.)"),
-        dv_list("C6:C205", "BankList", "Pick a bank", "Choose the bank from the drop-down list."),
-        dv_list("D6:D205", "AccountList", "Pick an account", "Choose the account from the drop-down list."),
+        dv_list(f"B6:B{TABLE_LAST}", '"Deposit,Withdrawal,Transfer,Adjustment,Fee"', "Pick a type",
+                "Choose the transaction type. (Interest is added automatically below - no need to record it here.)"),
+        dv_list(f"C6:C{TABLE_LAST}", "BankList", "Pick a bank", "Choose the bank from the drop-down list."),
+        dv_list(f"D6:D{TABLE_LAST}", "AccountList", "Pick an account", "Choose the account from the drop-down list."),
     ]
     ws = worksheet(rows, merges, hyper, 5, colsxml, tablepart_rid="rId1", validations=vals)
     return ws, table_xml
@@ -616,7 +605,7 @@ def build_balance():
             ct(f"A{r}", S["txt"], bank), ct(f"B{r}", S["txt"], acct),
             ct(f"C{r}", S["txt"], lbl),
             cf(f"D{r}", S["curr"], f"SUMIFS(Deposit!$D$6:$D$205,Deposit!$C$6:$C$205,C{r})", round(c["dep"], 2)),
-            cf(f"E{r}", S["curr"], f"SUMIFS(Transactions!$E$6:$E$205,Transactions!$D$6:$D$205,C{r})", round(c["ntx"], 2)),
+            cf(f"E{r}", S["curr"], f"SUMIFS(tblTransactions[Amount],tblTransactions[Account],C{r})", round(c["ntx"], 2)),
             cf(f"F{r}", S["curr"], f"D{r}+E{r}", round(c["principal"], 2)),
             cf(f"G{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2)),
             cf(f"H{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,14,FALSE),0)", round(c["bal_today"], 2)),
