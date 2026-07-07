@@ -389,7 +389,7 @@ def build_dashboard():
     metrics = [
         ("Total Current Balance (incl. interest)", "SUM(Balance!$H$6:$H$19)", round(KPI_balance_today, 2)),
         ("Total Deposited (All-Time)",           "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
-        ("Interest Earned to Date (auto)",       "SUM(Balance!$G$6:$G$19)", round(KPI_interest_to_date, 2)),
+        ("Interest Earned to Date (auto)",       "SUM(Interest!$P$6:$P$19)", round(KPI_interest_to_date, 2)),
         ("Total Withdrawn",                      '-SUMIFS(tblTransactions[Amount],tblTransactions[Type],"Withdrawal")', round(total_withdrawn, 2)),
     ]
     r = 5
@@ -589,11 +589,11 @@ def build_transactions():
 # ============================================================================
 def build_balance():
     rows, merges, hyper = sheet_open("Balance",
-        "Current Balance = Principal (Deposits + Net Transactions) + Interest Earned. Interest accrues daily for every account and is posted automatically on the Transactions tab, so Current Balance rises a little every day.", 5)
+        "Interest / Day shows each account's interest earned per day. Current Balance = Principal (Deposits + Net Transactions) + interest accrued to date; interest accrues daily for every account, so Current Balance rises a little every day.", 5)
     rows.append(band_row(4, S["section"], "\U0001F4BC Balances by Account"))
     merges.append("A4:M4")
     heads = ["Bank", "Account", "Account Label", "Deposits", "Net Transactions",
-             "Principal", "Interest Earned", "Current Balance",
+             "Principal", "Interest / Day", "Current Balance",
              "Interest (1 Yr)", "Proj. Balance (1 Yr)"]
     hcells = [ct(f"{COLS[i]}5", S["thead"], heads[i]) for i in range(10)]
     for i in range(10, 13):
@@ -607,7 +607,7 @@ def build_balance():
             cf(f"D{r}", S["curr"], f"SUMIFS(Deposit!$D$6:$D$205,Deposit!$C$6:$C$205,C{r})", round(c["dep"], 2)),
             cf(f"E{r}", S["curr"], f"SUMIFS(tblTransactions[Amount],tblTransactions[Account],C{r})", round(c["ntx"], 2)),
             cf(f"F{r}", S["curr"], f"D{r}+E{r}", round(c["principal"], 2)),
-            cf(f"G{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2)),
+            cf(f"G{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,6,FALSE),0)", round(c["iday"], 2)),
             cf(f"H{r}", S["green_curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$Q$19,14,FALSE),0)", round(c["bal_today"], 2)),
             cf(f"I{r}", S["curr"], f"IFERROR(VLOOKUP(C{r},Interest!$D$6:$L$19,9,FALSE),0)", round(c["int1yr"], 2)),
             cf(f"J{r}", S["curr"], f"F{r}+I{r}", round(c["principal"] + c["int1yr"], 2)),
@@ -617,7 +617,7 @@ def build_balance():
         rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
     # totals row 20
     tr = 20
-    totmap = {'D': 'dep', 'E': 'ntx', 'F': 'principal', 'G': 'i2d', 'H': 'bal_today', 'I': 'int1yr'}
+    totmap = {'D': 'dep', 'E': 'ntx', 'F': 'principal', 'G': 'iday', 'H': 'bal_today', 'I': 'int1yr'}
     tcells = [ct(f"A{tr}", S["tot_txt"], "TOTAL")] + [ce(f"{COLS[i]}{tr}", S["tot_txt"]) for i in (1, 2)]
     for col in "DEFGHIJ":
         if col == 'J':

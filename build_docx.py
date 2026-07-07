@@ -85,8 +85,9 @@ body.append(para(runs=run("Key Metrics", bold=True, color="2E5496", size="24")))
 body.append(formula_table([
     ("E5", "SUM(Balance!$H$6:$H$19)", "Total Balance Today (incl. interest): adds every account's Balance Today. Grows on its own as time passes."),
     ("E6", "SUM(Balance!$D$6:$D$19)", "Total Deposited (All-Time): sum of every account's total deposits."),
-    ("E7", "SUM(Balance!$G$6:$G$19)",
-        "Interest Earned to Date (auto): total interest accrued so far across all accounts; increases each day/month."),
+    ("E7", "SUM(Interest!$P$6:$P$19)",
+        "Interest Earned to Date (auto): total interest accrued so far across all accounts; increases each day. "
+        "(Sourced from the Interest tab because the Balance tab's Interest column now shows a per-day figure.)"),
     ("E8", '-SUMIFS(tblTransactions[Amount],tblTransactions[Type],"Withdrawal")',
         'Total Withdrawn: sums all "Withdrawal" amounts; the leading minus turns the stored negatives into a positive total.'),
 ]))
@@ -148,8 +149,8 @@ body.append(formula_table([
         "Net Transactions: sum of the manual Transaction Log for this account (withdrawals are negative, so they subtract). "
         "Uses a structured table reference so it always covers your entries and never the auto-interest ledger."),
     ("F6:F19", "D6+E6", "Principal: Deposits plus Net Transactions (the money you actually moved, before interest)."),
-    ("G6:G19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$Q$19,13,FALSE),0)",
-        "Interest Earned: the auto-accrued interest for this account (from the Interest sheet); grows with the date. Also shown as an auto-posted line on the Transactions tab."),
+    ("G6:G19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$Q$19,6,FALSE),0)",
+        "Interest / Day: each account's interest earned per day (from the Interest tab's Interest / Day column). The cumulative interest that is included in Current Balance is on the Interest tab (Interest to Date)."),
     ("H6:H19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$Q$19,14,FALSE),0)",
         "Current Balance: Principal plus Interest Earned. This is the balance that increases on its own each day/month."),
     ("I6:I19", "IFERROR(VLOOKUP(C6,Interest!$D$6:$L$19,9,FALSE),0)",
