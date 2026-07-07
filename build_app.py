@@ -523,13 +523,15 @@ def build_deposit():
 # ============================================================================
 def build_transactions():
     rows, merges, hyper = sheet_open("Transactions",
-        "Interest earned is shown at the TOP (auto-posted, read-only) and is already included in your Current Balance. "
-        "Log the money you move (deposits/withdrawals/transfers) in the Transaction Log below - use negative amounts for "
-        "money out and the filter arrows to search. The log can grow as long as you need (nothing sits beneath it).", 3)
+        "Interest earned PER DAY is shown at the top (auto-posted, read-only) for each account. The running total of "
+        "interest is added to your Current Balance automatically (see the Balance tab). Log the money you move "
+        "(deposits/withdrawals/transfers) in the Transaction Log below - use negative amounts for money out and the "
+        "filters to search; the log grows as you add rows.", 3)
     mheads = ["Date", "Type", "Bank", "Account", "Amount", "Notes"]
-    # ---- Auto-interest ledger (TOP, read-only). Placed above the log so the log
+    # ---- Auto-interest ledger (TOP, read-only). Shows each account's interest
+    #      earned PER DAY (Balance x rate/365). Placed above the log so the log
     #      can grow downward forever without ever colliding with it. ----------
-    rows.append(band_row(4, S["section"], "\U0001FA99 Interest Earned  (auto-posted \u2014 do not edit)"))
+    rows.append(band_row(4, S["section"], "\U0001FA99 Interest Earned per Day  (auto-posted \u2014 do not edit)"))
     merges.append("A4:M4")
     rows.append('<row r="5" ht="20" customHeight="1">'
                 + "".join(ct(f"{colL(i)}5", S["thead"], mheads[i]) for i in range(6)) + "</row>")
@@ -540,12 +542,12 @@ def build_transactions():
             + ct(f"B{r}", S["txt"], "Interest")
             + ct(f"C{r}", S["txt"], bank)
             + ct(f"D{r}", S["txt"], lbl)
-            + cf(f"E{r}", S["green_curr"], f"IFERROR(VLOOKUP(D{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2))
-            + ct(f"F{r}", S["txt"], "Interest earned to date") + "</row>")
+            + cf(f"E{r}", S["green_curr"], f"IFERROR(VLOOKUP(D{r},Interest!$D$6:$R$19,6,FALSE),0)", round(c["iday"], 2))
+            + ct(f"F{r}", S["txt"], "Interest earned per day") + "</row>")
     rows.append('<row r="20" ht="18" customHeight="1">'
                 + ct("A20", S["tot_txt"], "") + ct("B20", S["tot_txt"], "") + ct("C20", S["tot_txt"], "")
-                + ct("D20", S["tot_txt"], "Total interest")
-                + cf("E20", S["tot_curr"], "SUM(E6:E19)", round(sum(c["i2d"] for c in calc.values()), 2))
+                + ct("D20", S["tot_txt"], "Total per day")
+                + cf("E20", S["tot_curr"], "SUM(E6:E19)", round(sum(round(c["iday"], 2) for c in calc.values()), 2))
                 + ct("F20", S["tot_txt"], "") + "</row>")
     # ---- Transaction Log (BELOW; grows freely, nothing sits beneath it) ------
     rows.append(band_row(22, S["section"], "\U0001F504 Transaction Log  (money you move \u2014 use the filters)"))
