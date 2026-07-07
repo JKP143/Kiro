@@ -895,7 +895,7 @@ workbook_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<definedName name="BankList">Dashboard!$A$17:$A$23</definedName>'
     '<definedName name="AccountList">Interest!$D$6:$D$19</definedName>'
     '</definedNames>'
-    '<calcPr calcId="0" fullCalcOnLoad="1"/></workbook>')
+    '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/></workbook>')
 
 workbook_rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
