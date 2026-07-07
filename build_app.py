@@ -389,7 +389,7 @@ def build_dashboard():
     rows.append('<row r="4" ht="20" customHeight="1">' + "".join(krow) + "</row>")
     merges.append("A4:H4"); merges.append("I4:M4")
     metrics = [
-        ("Total Balance Today (incl. interest)", "SUM(Balance!$H$6:$H$19)", round(KPI_balance_today, 2)),
+        ("Total Current Balance (incl. interest)", "SUM(Balance!$H$6:$H$19)", round(KPI_balance_today, 2)),
         ("Total Deposited (All-Time)",           "SUM(Balance!$D$6:$D$19)", round(KPI_total_deposits, 2)),
         ("Interest Earned to Date (auto)",       "SUM(Balance!$G$6:$G$19)", round(KPI_interest_to_date, 2)),
         ("Total Withdrawn",                      '-SUMIFS(Transactions!$E$6:$E$205,Transactions!$B$6:$B$205,"Withdrawal")', round(total_withdrawn, 2)),
@@ -404,7 +404,7 @@ def build_dashboard():
     rows.append(band_row(10, S["subsection"], "\U0001F3AF Personal Goal Tracker")); merges.append("A10:M10")
     rows.append(two_col(11, "Your Savings Goal Target",
                         val_block(11, S["m_val_input"], number=GOAL_TARGET)))
-    rows.append(two_col(12, "Maya Personal Goal \u2014 Balance Today",
+    rows.append(two_col(12, "Maya Personal Goal \u2014 Current Balance",
                         val_block(12, S["m_val"],
                                   formula='IFERROR(VLOOKUP("Maya - Personal Goal",Balance!$C$6:$H$19,6,FALSE),0)',
                                   cached=round(calc["Maya - Personal Goal"]["bal_today"], 2))))
@@ -525,20 +525,52 @@ def build_deposit():
 # ============================================================================
 def build_transactions():
     rows, merges, hyper = sheet_open("Transactions",
-        "All money movements: deposits, withdrawals, transfers and interest postings. Use negative amounts for money out. Filter by any column.", 5)
-    rows.append(band_row(4, S["section"], "\U0001F504 Transaction Log  (use the filter arrows to search / sort)"))
-    merges.append("A4:M4")
-    heads = ["Date", "Type", "Bank", "Account", "Amount", "Notes"]
-    hcells = [ct(f"{COLS[i]}5", S["thead"], heads[i]) for i in range(6)]
-    for i in range(6, 13):
-        hcells.append(ce(f"{COLS[i]}5", S["thead"]))
-    rows.append('<row r="5" ht="20" customHeight="1">' + "".join(hcells) + "</row>")
-    for idx, (ds, ty, bank, lbl, amt, note) in enumerate(TX_ROWS):
-        r = 6 + idx
-        rows.append(f'<row r="{r}">' +
-            cn(f"A{r}", S["date_col"], ds) + ct(f"B{r}", S["txt_col"], ty) +
-            ct(f"C{r}", S["txt_col"], bank) + ct(f"D{r}", S["txt_col"], lbl) +
-            cn(f"E{r}", S["curr_col"], amt) + ct(f"F{r}", S["txt_col"], note) + "</row>")
+        "LEFT = money you move (deposits/withdrawals/transfers) - use the filters; use negative amounts for money out. "
+        "RIGHT = interest earned, posted automatically and already included in your Current Balance (do not edit).", 5)
+    # Row 4: two section bands (manual log | auto interest)
+    r4 = []
+    for i in range(13):
+        ref = f"{colL(i)}4"
+        if i == 0:
+            r4.append(ct(ref, S["section"], "\U0001F504 Transaction Log  (money you move)"))
+        elif i == 7:
+            r4.append(ct(ref, S["section"], "\U0001FA99 Interest Earned  (auto-posted \u2014 do not edit)"))
+        else:
+            r4.append(ce(ref, S["section"]))
+    rows.append('<row r="4" ht="20" customHeight="1">' + "".join(r4) + "</row>")
+    merges.append("A4:F4"); merges.append("H4:M4")
+    # Row 5: headers  (manual A-F | spacer G | auto-interest ledger H-M)
+    mheads = ["Date", "Type", "Bank", "Account", "Amount", "Notes"]
+    h = [ct(f"{colL(i)}5", S["thead"], mheads[i]) for i in range(6)]
+    h.append(ce("G5", S["default"]))
+    for j, name in enumerate(["Date", "Type", "Bank", "Account", "Amount", "Notes"]):
+        h.append(ct(f"{colL(7+j)}5", S["thead"], name))
+    rows.append('<row r="5" ht="20" customHeight="1">' + "".join(h) + "</row>")
+    # Rows 6-19: manual seed rows (6-7) on the left + auto-interest ledger (all 14) on the right
+    for i in range(14):
+        r = 6 + i
+        cells = []
+        if i < len(TX_ROWS):
+            ds, ty, bank, lbl, amt, note = TX_ROWS[i]
+            cells += [cn(f"A{r}", S["date_col"], ds), ct(f"B{r}", S["txt_col"], ty),
+                      ct(f"C{r}", S["txt_col"], bank), ct(f"D{r}", S["txt_col"], lbl),
+                      cn(f"E{r}", S["curr_col"], amt), ct(f"F{r}", S["txt_col"], note)]
+        lbank, lacct, latype, llbl, lrate, lfreq = ACCOUNTS[i]
+        c = calc[llbl]
+        cells += [
+            cf(f"H{r}", S["date"], "TODAY()", REF_TODAY),
+            ct(f"I{r}", S["txt"], "Interest"),
+            ct(f"J{r}", S["txt"], lbank),
+            ct(f"K{r}", S["txt"], llbl),
+            cf(f"L{r}", S["green_curr"], f"IFERROR(VLOOKUP(K{r},Interest!$D$6:$Q$19,13,FALSE),0)", round(c["i2d"], 2)),
+            ct(f"M{r}", S["txt"], "Interest earned to date"),
+        ]
+        rows.append(f'<row r="{r}">' + "".join(cells) + "</row>")
+    # Auto-interest total (row 20)
+    rows.append('<row r="20" ht="18" customHeight="1">'
+                + ct("K20", S["tot_txt"], "Total interest")
+                + cf("L20", S["tot_curr"], "SUM(L6:L19)", round(sum(c["i2d"] for c in calc.values()), 2))
+                + "</row>")
     table_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
         'id="2" name="tblTransactions" displayName="tblTransactions" ref="A5:F205" totalsRowShown="0">'
@@ -549,13 +581,14 @@ def build_transactions():
         '<tableColumn id="5" name="Amount"/><tableColumn id="6" name="Notes"/></tableColumns>'
         '<tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" '
         'showRowStripes="1" showColumnStripes="0"/></table>')
-    specs = [(13, S["date_col"]), (14, S["txt_col"]), (12, S["txt_col"]),
-             (24, S["txt_col"]), (15, S["curr_col"]), (28, S["txt_col"]),
-             (10, None), (10, None), (12, None), (12, None), (12, None), (12, None), (12, None)]
+    specs = [(12, S["date_col"]), (12, S["txt_col"]), (10, S["txt_col"]),
+             (18, S["txt_col"]), (13, S["curr_col"]), (15, S["txt_col"]),
+             (3, None), (11, S["date_col"]), (9, S["txt_col"]), (9, S["txt_col"]),
+             (18, S["txt_col"]), (13, S["curr_col"]), (16, S["txt_col"])]
     colsxml = cols_xml_styled(specs)
     vals = [
         dv_list("B6:B205", '"Deposit,Withdrawal,Transfer,Adjustment,Fee"', "Pick a type",
-                "Choose the transaction type. (Interest is added automatically - no need to record it here.)"),
+                "Choose the transaction type. (Interest is added automatically on the right - no need to record it here.)"),
         dv_list("C6:C205", "BankList", "Pick a bank", "Choose the bank from the drop-down list."),
         dv_list("D6:D205", "AccountList", "Pick an account", "Choose the account from the drop-down list."),
     ]
@@ -567,11 +600,11 @@ def build_transactions():
 # ============================================================================
 def build_balance():
     rows, merges, hyper = sheet_open("Balance",
-        "Balance Today grows automatically with interest each day/month. Current Balance = Deposits + Net Transactions (money you moved); Balance Today adds the interest accrued up to today.", 5)
+        "Current Balance = Principal (Deposits + Net Transactions) + Interest Earned. Interest is posted automatically on the Transactions tab and grows each day/month, so Current Balance rises on its own.", 5)
     rows.append(band_row(4, S["section"], "\U0001F4BC Balances by Account"))
     merges.append("A4:M4")
     heads = ["Bank", "Account", "Account Label", "Deposits", "Net Transactions",
-             "Current Balance", "Interest to Date", "Balance Today",
+             "Principal", "Interest Earned", "Current Balance",
              "Interest (1 Yr)", "Proj. Balance (1 Yr)"]
     hcells = [ct(f"{COLS[i]}5", S["thead"], heads[i]) for i in range(10)]
     for i in range(10, 13):
