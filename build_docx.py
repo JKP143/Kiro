@@ -159,9 +159,9 @@ body.append(formula_table([
 
 # ---- Interest ----
 body.append(para(runs=run("5.  Interest", bold=True, color="1F3864", size="28"), style="Heading1", spacing_before="240"))
-body.append(para("One row per account (rows 6-19). Daily accounts (Maya/UNO/Banko/CIMB/Maribank savings) compound "
-                 "daily; the rest compound monthly. Maya Savings rate is set to 10%. Example shows row 6. "
-                 "Columns N-Q make the balance grow automatically over time using the TODAY() function."))
+body.append(para("One row per account (rows 6-19). Interest to Date and Balance Today accrue DAILY for every account "
+                 "(annual rate / 365, compounded each day). Maya Savings rate is set to 10%. Example shows row 6. "
+                 "Columns N-R make the balance grow automatically over time using the TODAY() function."))
 body.append(formula_table([
     ("G6:G19", "IFERROR(VLOOKUP(D6,Balance!$C$6:$H$19,4,FALSE),0)",
         "Current Balance: pulls this account's current balance from the Balance sheet."),
@@ -179,13 +179,13 @@ body.append(formula_table([
     ("N6:N19", "(editable date - e.g. 6/1/2026)",
         "Interest Start: a plain, editable date (highlighted yellow) from which interest accrues. Pre-filled with "
         "your first deposit date; type a different date to change it. Kept as a value (not a lookup) so it works on every Excel version."),
-    ("O6:O19", 'IF(ISNUMBER(N6),IF(F6="Daily",MAX(0,TODAY()-N6),MAX(0,DATEDIF(N6,TODAY(),"m"))),0)',
-        "Periods Elapsed: days since the start date for daily accounts, or whole months for monthly accounts, up to TODAY(). "
-        "Because it uses TODAY(), it grows by itself each time you open the file."),
-    ("P6:P19", "G6*((1+H6)^O6-1)",
-        "Interest to Date: compound interest actually earned from the start date until today."),
+    ("O6:O19", 'IF(ISNUMBER(N6),MAX(0,TODAY()-N6),0)',
+        "Days Elapsed: number of days from the Interest Start date up to TODAY(), for every account. "
+        "Because it uses TODAY(), it grows by one each day the file is opened."),
+    ("P6:P19", "G6*((1+E6/365)^O6-1)",
+        "Interest to Date: interest earned so far, accrued DAILY for every account (daily rate = annual rate / 365, compounded each day)."),
     ("Q6:Q19", "G6+P6",
-        "Balance Today: current balance plus interest to date - the amount that increases on its own each day/month."),
+        "Balance Today: current balance plus interest to date - the amount that increases a little on its own every day."),
     ("R6:R19", 'IF(F6="Daily",365,12)',
         "Periods / Yr (hidden helper): 365 for daily accounts, 12 for monthly - used by the 1-year projection in column K."),
     ("G20,I20,J20,K20,L20,P20,Q20", "SUM(G6:G19)", "Column totals row (same SUM pattern for I, J, K, L, P and Q). Interest / Day and Interest / Month each total cleanly since every account is on the same basis."),
@@ -193,11 +193,10 @@ body.append(formula_table([
 
 body.append(para(runs=run("How the automatic growth works", bold=True, color="1F3864", size="26"), style="Heading1", spacing_before="240"))
 body.append(para("The Interest sheet uses TODAY(), which Excel refreshes every time the file is opened (or recalculated). "
-                 "So each new day, daily-interest accounts grow a little, and each new month, monthly-interest accounts step "
-                 "up - the Balance Today, the Dashboard totals and the Savings-by-Bank pie all rise on their own without you "
-                 "editing anything. Note: this is an estimate of what your money earns; because interest is now accrued "
-                 "automatically, do NOT also record interest as a manual transaction (that would double-count). Actual bank "
-                 "postings and any taxes may differ slightly."))
+                 "So each new day, every account's interest grows a little - the Balance Today, the Dashboard totals and "
+                 "the Savings-by-Bank pie all rise on their own without you editing anything. Note: this is an estimate of "
+                 "what your money earns; because interest is accrued automatically, do NOT also record interest as a manual "
+                 "transaction (that would double-count). Actual bank postings and any taxes may differ slightly."))
 body.append(para(runs=run("These figures currently use example seed data. Replace the entries on the Deposit and "
                           "Transactions tabs with your real amounts and every formula above recalculates automatically.",
                           italic=True, color="808080"), spacing_before="120"))

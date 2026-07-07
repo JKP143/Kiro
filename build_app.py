@@ -88,12 +88,8 @@ for (bank, acct, atype, lbl, rate, freq) in ACCOUNTS:
     # ---- live accrual (grows with TODAY): from earliest deposit date to "today"
     START = serial(2026, 6, 1)          # earliest deposit date for the seed data
     REF_TODAY = serial(2026, 7, 5)      # matches the current date for cached preview
-    if freq == "Daily":
-        elapsed = max(0, REF_TODAY - START)                 # days
-    else:
-        # whole months between START and REF_TODAY (like DATEDIF "m")
-        elapsed = max(0, (2026 - 2026) * 12 + (7 - 6) - (1 if 5 < 1 else 0))
-    i2d = principal * ((1 + pr) ** elapsed - 1)             # interest earned to date
+    elapsed = max(0, REF_TODAY - START)                     # days elapsed (daily accrual for ALL accounts)
+    i2d = principal * ((1 + rate / 365) ** elapsed - 1)     # interest earned to date, accrued daily
     bal_today = principal + i2d
     calc[lbl] = dict(bank=bank, dep=dep, ntx=ntx, principal=principal, rate=rate,
                      freq=freq, pr=pr, iper=iper, iday=iday, imonth=imonth, n=n, projbal=projbal,
@@ -591,7 +587,7 @@ def build_transactions():
 # ============================================================================
 def build_balance():
     rows, merges, hyper = sheet_open("Balance",
-        "Current Balance = Principal (Deposits + Net Transactions) + Interest Earned. Interest is posted automatically on the Transactions tab and grows each day/month, so Current Balance rises on its own.", 5)
+        "Current Balance = Principal (Deposits + Net Transactions) + Interest Earned. Interest accrues daily for every account and is posted automatically on the Transactions tab, so Current Balance rises a little every day.", 5)
     rows.append(band_row(4, S["section"], "\U0001F4BC Balances by Account"))
     merges.append("A4:M4")
     heads = ["Bank", "Account", "Account Label", "Deposits", "Net Transactions",
@@ -641,15 +637,15 @@ def build_balance():
 def build_interest():
     NC = 18  # A..R
     rows, merges, hyper = sheet_open("Interest",
-        "Interest auto-calculates and GROWS ON ITS OWN. 'Balance Today' accrues from the yellow 'Interest Start' "
-        "date up to TODAY() every time you open the file - daily accounts step up each day, monthly accounts each "
-        "month. Interest Start is pre-filled with your first deposit date; edit it if an account started elsewhere. Maya Savings = 10%.", 5, ncols=NC)
+        "Interest auto-calculates and GROWS ON ITS OWN. 'Balance Today' accrues DAILY for every account (annual rate / 365, "
+        "compounded each day) from the yellow 'Interest Start' date up to TODAY(), so it grows a little every day you open "
+        "the file. Interest Start is pre-filled with your first deposit date; edit it if an account started elsewhere. Maya Savings = 10%.", 5, ncols=NC)
     rows.append(band_row(4, S["section"], "\U0001F4C8 Interest Rates, Earnings & Live Balance", ncols=NC))
     merges.append("A4:R4")
     heads = ["Bank", "Account", "Account Type", "Account Label", "Annual Rate",
              "Frequency", "Current Balance", "Periodic Rate", "Interest / Day (est.)",
              "Interest / Month (est.)", "Proj. Balance (1 Yr)", "Interest (1 Yr)", "Monthly Factor",
-             "Interest Start", "Periods Elapsed", "Interest to Date", "Balance Today", "Periods / Yr"]
+             "Interest Start", "Days Elapsed", "Interest to Date", "Balance Today", "Periods / Yr"]
     hcells = [ct(f"{colL(i)}5", S["thead"], heads[i]) for i in range(NC)]
     rows.append('<row r="5" ht="30" customHeight="1">' + "".join(hcells) + "</row>")
     for idx, (bank, acct, atype, lbl, rate, freq) in enumerate(ACCOUNTS):
@@ -669,8 +665,8 @@ def build_interest():
             # Interest Start = a plain EDITABLE date (yellow), pre-filled with the first
             # deposit date. No lookup functions -> works on every Excel version.
             cn(f"N{r}", S["date_input"], c["start"]),
-            cf(f"O{r}", S["intc"], f'IF(ISNUMBER(N{r}),IF(F{r}="Daily",MAX(0,TODAY()-N{r}),MAX(0,DATEDIF(N{r},TODAY(),"m"))),0)', c["elapsed"]),
-            cf(f"P{r}", S["curr"], f"G{r}*((1+H{r})^O{r}-1)", round(c["i2d"], 2)),
+            cf(f"O{r}", S["intc"], f'IF(ISNUMBER(N{r}),MAX(0,TODAY()-N{r}),0)', c["elapsed"]),
+            cf(f"P{r}", S["curr"], f"G{r}*((1+E{r}/365)^O{r}-1)", round(c["i2d"], 2)),
             cf(f"Q{r}", S["curr"], f"G{r}+P{r}", round(c["bal_today"], 2)),
             cf(f"R{r}", S["intc"], f'IF(F{r}="Daily",365,12)', c["n"]),
         ]
